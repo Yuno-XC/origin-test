@@ -51,27 +51,44 @@ public struct TextInput: RequestDataProtocol {
     public var data: Data {
         // Build from innermost to outermost
 
-        // Build RemoteEditInfo directly (no need for RemoteImeObject wrapper)
-        // Based on research: RemoteEditInfo structure:
-        //    Based on research: RemoteEditInfo has:
-        //    - beforeLength (int32) = 0 (no deletion before)
-        //    - afterLength (int32) = 0 (no deletion after)
-        //    - newText (string) = text to insert
+        // 1. Build RemoteImeObject
+        //    message RemoteImeObject {
+        //      int32 start = 1;
+        //      int32 end = 2;
+        //      string value = 3;
+        //    }
+        var imeObject = Data()
+        let paramValue = max(0, text.count - 1)
+
+        // Field 1: start (int32) = text.count - 1
+        imeObject.append(0x08) // Field tag: (1 << 3) | 0 = 8
+        imeObject.append(contentsOf: encodeVarint(UInt64(paramValue)))
+
+        // Field 2: end (int32) = text.count - 1
+        imeObject.append(0x10) // Field tag: (2 << 3) | 0 = 16
+        imeObject.append(contentsOf: encodeVarint(UInt64(paramValue)))
+
+        // Field 3: value (string) = text
+        imeObject.append(0x1A) // Field tag: (3 << 3) | 2 = 26
+        let textData = Data(text.utf8)
+        imeObject.append(contentsOf: encodeVarint(UInt64(textData.count)))
+        imeObject.append(textData)
+
+        // 2. Build RemoteEditInfo
+        //    message RemoteEditInfo {
+        //      int32 insert = 1;
+        //      RemoteImeObject text_field_status = 2;
+        //    }
         var editInfo = Data()
 
-        // Field 1: beforeLength (int32) = 0
+        // Field 1: insert (int32) = 1
         editInfo.append(0x08) // Field tag: (1 << 3) | 0 = 8
-        editInfo.append(0x00) // Value: 0
+        editInfo.append(0x01) // Value: 1
 
-        // Field 2: afterLength (int32) = 0
-        editInfo.append(0x10) // Field tag: (2 << 3) | 0 = 16
-        editInfo.append(0x00) // Value: 0
-
-        // Field 3: newText (string) = text
-        editInfo.append(0x1A) // Field tag: (3 << 3) | 2 = 26 (assuming field 3)
-        let textData = Data(text.utf8)
-        editInfo.append(contentsOf: encodeVarint(UInt64(textData.count)))
-        editInfo.append(textData)
+        // Field 2: text_field_status (embedded message)
+        editInfo.append(0x12) // Field tag: (2 << 3) | 2 = 18
+        editInfo.append(contentsOf: encodeVarint(UInt64(imeObject.count)))
+        editInfo.append(imeObject)
 
         // 3. Build RemoteImeBatchEdit
         //    message RemoteImeBatchEdit {
