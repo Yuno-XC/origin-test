@@ -24,6 +24,10 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
     private(set) var currentDevice: TVDevice?
     private var isPairing = false
     private var shouldFallbackToSony = false
+    
+    // IME counters from TV (needed for text input)
+    private var imeCounter: Int32 = 0
+    private var fieldCounter: Int32 = 0
 
     var connectionState: AnyPublisher<ConnectionState, Never> {
         stateSubject.eraseToAnyPublisher()
@@ -237,13 +241,19 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
                 case .connected:
                     #if DEBUG
                     print("[AndroidTVAdapter] ✅ Remote: Connected and ready")
+                    print("[AndroidTVAdapter] ⏳ Waiting for IME batch edit response to get counters from TV...")
                     #endif
+                    // Don't reset counters - wait for TV to send them in response
+                    // Counters will be updated when we receive remoteImeBatchEditResponse
                     self.stateSubject.send(.connected)
                     
                 case .paired(let runningApp):
                     #if DEBUG
                     print("[AndroidTVAdapter] ✅ Remote: Paired, running app: \(runningApp ?? "Unknown")")
+                    print("[AndroidTVAdapter] ⏳ Waiting for IME batch edit response to get counters from TV...")
                     #endif
+                    // Don't reset counters - wait for TV to send them in response
+                    // Counters will be updated when we receive remoteImeBatchEditResponse
                     self.stateSubject.send(.connected)
                     
                 case .error(let error):
@@ -257,6 +267,32 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
                     print("[AndroidTVAdapter] ℹ️ Remote state: \(state)")
                     #endif
                     break
+                }
+            }
+        }
+        
+        // Listen for IME batch edit responses to update counters
+        remoteManager?.receiveData = { [weak self] data, error in
+            guard let self = self, let data = data, data.count > 0 else { return }
+            
+            #if DEBUG
+            // Log all incoming data to help debug IME response detection
+            if data.count < 100 { // Only log small messages to avoid spam
+                print("[AndroidTVAdapter] 📥 Received data (\(data.count) bytes): \(Array(data).map { String(format: "%02X", $0) }.joined(separator: " "))")
+            }
+            #endif
+            
+            // Parse IME batch edit response if present
+            // Response format: RemoteImeBatchEditResponse with imeCounter and fieldCounter
+            if let response = IMEBatchEditResponse(data: data) {
+                Task { @MainActor in
+                    self.imeCounter = response.imeCounter
+                    self.fieldCounter = response.fieldCounter
+                    #if DEBUG
+                    print("[AndroidTVAdapter] ✅ Parsed IME batch edit response:")
+                    print("[AndroidTVAdapter]   imeCounter: \(response.imeCounter)")
+                    print("[AndroidTVAdapter]   fieldCounter: \(response.fieldCounter)")
+                    #endif
                 }
             }
         }
@@ -565,14 +601,31 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
                 #if DEBUG
                 print("[AndroidTVAdapter] ⚠️ Action not mapped to key, checking special cases")
                 #endif
-                // Handle text input and other special cases
-                if case .textInput(let text) = action {
-                    #if DEBUG
-                    print("[AndroidTVAdapter] 📝 Sending text input: \(text)")
-                    #endif
-                    try await sendText(text, remoteManager: remoteManager)
-                    return
-                }
+            // Handle text input and other special cases
+            if case .textInput(let text) = action {
+                #if DEBUG
+                print("[AndroidTVAdapter] 📝 Sending text input: \(text)")
+                print("[AndroidTVAdapter] Using IME batch edit method (imeCounter: \(imeCounter), fieldCounter: \(fieldCounter))")
+                #endif
+                
+                // Use IME batch edit with counters from TV response
+                // Increment counters for next use (TV will send updated counters in response)
+                let currentImeCounter = imeCounter
+                let currentFieldCounter = fieldCounter
+                
+                imeCounter += 1
+                fieldCounter += 1
+                
+                let imeMessage = IMEBatchEdit(text: text, imeCounter: currentImeCounter, fieldCounter: currentFieldCounter)
+                remoteManager.send(imeMessage)
+                
+                #if DEBUG
+                print("[AndroidTVAdapter] ✅ IME batch edit sent for text: '\(text)'")
+                print("[AndroidTVAdapter] Used counters - imeCounter: \(currentImeCounter), fieldCounter: \(currentFieldCounter)")
+                print("[AndroidTVAdapter] Next counters will be - imeCounter: \(imeCounter), fieldCounter: \(fieldCounter)")
+                #endif
+                return
+            }
                 if case .openApp(let url) = action {
                     #if DEBUG
                     print("[AndroidTVAdapter] 🔗 Sending deep link: \(url)")
