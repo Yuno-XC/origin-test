@@ -123,6 +123,7 @@ struct FullScreenKeyboardView: View {
 
     @State private var text = ""
     @FocusState private var isFocused: Bool
+    @State private var debounceTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -225,11 +226,29 @@ struct FullScreenKeyboardView: View {
                 isFocused = true
             }
         }
+        .onDisappear {
+            // Cancel any pending text send tasks when view disappears
+            debounceTask?.cancel()
+            debounceTask = nil
+        }
     }
 
     private func handleTextChange(old: String, new: String) {
-        // Don't send characters immediately - just update local text
-        // Text will be sent when "Done" is clicked
+        // Cancel any pending send task
+        debounceTask?.cancel()
+        
+        // Send text in real-time with a small debounce to avoid overwhelming the TV
+        // This allows smooth typing while preventing too many rapid messages
+        debounceTask = Task {
+            // Wait a short time (150ms) to debounce rapid typing
+            try? await Task.sleep(nanoseconds: 150_000_000) // 150ms
+            
+            // Check if task was cancelled (new text came in)
+            guard !Task.isCancelled else { return }
+            
+            // Send the current full text to TV (including empty string to clear field)
+            onSendText(new)
+        }
     }
 }
 
