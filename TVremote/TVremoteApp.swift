@@ -6,12 +6,9 @@
 //
 
 import SwiftUI
-import BackgroundTasks
 
 @main
 struct TVremoteApp: App {
-    @Environment(\.scenePhase) private var scenePhase
-    
     init() {
         // Configure appearance
         configureAppearance()
@@ -20,11 +17,6 @@ struct TVremoteApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-        }
-        .onChange(of: scenePhase) { oldPhase, newPhase in
-            #if DEBUG
-            print("[TVremoteApp] Scene phase: \(oldPhase) -> \(newPhase)")
-            #endif
         }
     }
 
