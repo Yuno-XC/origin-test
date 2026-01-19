@@ -57,19 +57,19 @@ public struct TextInput: RequestDataProtocol {
         //      int32 end = 2;
         //      string value = 3;
         //    }
-        // For text insertion/appending, start and end represent the cursor position.
-        // When setting text, both should be set to the length of the text being set.
-        // This tells the TV to place the cursor at the end after inserting.
+        // For text insertion, start and end represent the selection range to replace.
+        // When setting new text, we set start=0, end=0 to indicate we want to set
+        // the entire field to the value. The value contains the complete text.
+        // After insertion, cursor will be at the end of the text (value.count).
         var imeObject = Data()
-        let cursorPosition = text.count
         
-        // Field 1: start (int32) = text.count (cursor at end of inserted text)
+        // Field 1: start (int32) = 0 (beginning of field)
         imeObject.append(0x08) // Field tag: (1 << 3) | 0 = 8
-        imeObject.append(contentsOf: encodeVarint(UInt64(cursorPosition)))
+        imeObject.append(0x00) // Value: 0
 
-        // Field 2: end (int32) = text.count (same as start for cursor position)
+        // Field 2: end (int32) = 0 (same as start, no selection, just cursor at start)
         imeObject.append(0x10) // Field tag: (2 << 3) | 0 = 16
-        imeObject.append(contentsOf: encodeVarint(UInt64(cursorPosition)))
+        imeObject.append(0x00) // Value: 0
 
         // Field 3: value (string) = text
         imeObject.append(0x1A) // Field tag: (3 << 3) | 2 = 26
