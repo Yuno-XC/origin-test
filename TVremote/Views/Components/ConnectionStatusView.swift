@@ -73,6 +73,12 @@ struct ConnectionStatusView: View {
 
 struct StatusBadge: View {
     let isConnected: Bool
+    let onReconnect: (() -> Void)?
+    
+    init(isConnected: Bool, onReconnect: (() -> Void)? = nil) {
+        self.isConnected = isConnected
+        self.onReconnect = onReconnect
+    }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -83,6 +89,16 @@ struct StatusBadge: View {
             Text(isConnected ? "Connected" : "Disconnected")
                 .font(.caption)
                 .foregroundColor(Color(.systemGray))
+            
+            // Reconnect button when disconnected
+            if !isConnected, let reconnect = onReconnect {
+                Button(action: reconnect) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.blue)
+                }
+                .padding(.leading, 4)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -116,7 +132,7 @@ struct StatusBadge: View {
             )
 
             StatusBadge(isConnected: true)
-            StatusBadge(isConnected: false)
+            StatusBadge(isConnected: false, onReconnect: { print("Reconnect tapped") })
         }
         .padding()
     }

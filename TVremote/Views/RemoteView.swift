@@ -125,8 +125,15 @@ struct RemoteView: View {
 
             Spacer()
 
-            // Connection status
-            StatusBadge(isConnected: appViewModel.connectionState.isConnected)
+            // Connection status with reconnect button
+            StatusBadge(
+                isConnected: appViewModel.connectionState.isConnected,
+                onReconnect: {
+                    Task {
+                        await appViewModel.reconnect()
+                    }
+                }
+            )
 
             Spacer()
 

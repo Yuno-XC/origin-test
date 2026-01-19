@@ -219,6 +219,43 @@ final class AppViewModel: ObservableObject {
             break
         }
     }
+    
+    // MARK: - App Lifecycle
+    
+    /// Handle app becoming active (e.g., returning from background)
+    func handleAppBecameActive() async {
+        #if DEBUG
+        print("[AppViewModel] 🔄 App became active - checking connection state")
+        #endif
+        
+        // If we have a connected device but connection is lost, try to reconnect
+        if let device = connectedDevice,
+           !connectionState.isConnected,
+           device.isPaired {
+            #if DEBUG
+            print("[AppViewModel] 🔄 Attempting to reconnect to \(device.name)")
+            #endif
+            await connect(to: device)
+        }
+    }
+    
+    // MARK: - Reconnect
+    
+    /// Reconnect to the currently connected device
+    func reconnect() async {
+        #if DEBUG
+        print("[AppViewModel] 🔄 reconnect() called")
+        #endif
+        
+        guard let device = connectedDevice else {
+            #if DEBUG
+            print("[AppViewModel] ❌ No connected device to reconnect to")
+            #endif
+            return
+        }
+        
+        await connect(to: device)
+    }
 }
 
 // MARK: - Shared Instance

@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var appViewModel = AppViewModel.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
@@ -35,6 +36,38 @@ struct ContentView: View {
         }
         .environmentObject(appViewModel)
         .preferredColorScheme(.dark)
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            #if DEBUG
+            print("[ContentView] Scene phase changed: \(oldPhase) -> \(newPhase)")
+            #endif
+            
+            switch newPhase {
+            case .background:
+                // App went to background - keep connection alive
+                #if DEBUG
+                print("[ContentView] App went to background - maintaining connection")
+                #endif
+                // Don't disconnect - connection should stay alive
+                
+            case .inactive:
+                // App is inactive (e.g., during transition)
+                #if DEBUG
+                print("[ContentView] App became inactive")
+                #endif
+                
+            case .active:
+                // App became active - check connection and reconnect if needed
+                #if DEBUG
+                print("[ContentView] App became active - checking connection")
+                #endif
+                Task {
+                    await appViewModel.handleAppBecameActive()
+                }
+                
+            @unknown default:
+                break
+            }
+        }
     }
 }
 
