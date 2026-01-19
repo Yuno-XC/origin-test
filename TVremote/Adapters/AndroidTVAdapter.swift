@@ -24,10 +24,6 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
     private(set) var currentDevice: TVDevice?
     private var isPairing = false
     private var shouldFallbackToSony = false
-    
-    // IME counters from TV (needed for text input)
-    private var imeCounter: Int32 = 0
-    private var fieldCounter: Int32 = 0
 
     var connectionState: AnyPublisher<ConnectionState, Never> {
         stateSubject.eraseToAnyPublisher()
@@ -241,19 +237,13 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
                 case .connected:
                     #if DEBUG
                     print("[AndroidTVAdapter] ✅ Remote: Connected and ready")
-                    print("[AndroidTVAdapter] ⏳ Waiting for IME batch edit response to get counters from TV...")
                     #endif
-                    // Don't reset counters - wait for TV to send them in response
-                    // Counters will be updated when we receive remoteImeBatchEditResponse
                     self.stateSubject.send(.connected)
                     
                 case .paired(let runningApp):
                     #if DEBUG
                     print("[AndroidTVAdapter] ✅ Remote: Paired, running app: \(runningApp ?? "Unknown")")
-                    print("[AndroidTVAdapter] ⏳ Waiting for IME batch edit response to get counters from TV...")
                     #endif
-                    // Don't reset counters - wait for TV to send them in response
-                    // Counters will be updated when we receive remoteImeBatchEditResponse
                     self.stateSubject.send(.connected)
                     
                 case .error(let error):
@@ -267,32 +257,6 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
                     print("[AndroidTVAdapter] ℹ️ Remote state: \(state)")
                     #endif
                     break
-                }
-            }
-        }
-        
-        // Listen for IME batch edit responses to update counters
-        remoteManager?.receiveData = { [weak self] data, error in
-            guard let self = self, let data = data, data.count > 0 else { return }
-            
-            #if DEBUG
-            // Log all incoming data to help debug IME response detection
-            if data.count < 100 { // Only log small messages to avoid spam
-                print("[AndroidTVAdapter] 📥 Received data (\(data.count) bytes): \(Array(data).map { String(format: "%02X", $0) }.joined(separator: " "))")
-            }
-            #endif
-            
-            // Parse IME batch edit response if present
-            // Response format: RemoteImeBatchEditResponse with imeCounter and fieldCounter
-            if let response = IMEBatchEditResponse(data: data) {
-                Task { @MainActor in
-                    self.imeCounter = response.imeCounter
-                    self.fieldCounter = response.fieldCounter
-                    #if DEBUG
-                    print("[AndroidTVAdapter] ✅ Parsed IME batch edit response:")
-                    print("[AndroidTVAdapter]   imeCounter: \(response.imeCounter)")
-                    print("[AndroidTVAdapter]   fieldCounter: \(response.fieldCounter)")
-                    #endif
                 }
             }
         }
@@ -601,31 +565,14 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
                 #if DEBUG
                 print("[AndroidTVAdapter] ⚠️ Action not mapped to key, checking special cases")
                 #endif
-            // Handle text input and other special cases
-            if case .textInput(let text) = action {
-                #if DEBUG
-                print("[AndroidTVAdapter] 📝 Sending text input: \(text)")
-                print("[AndroidTVAdapter] Using IME batch edit method (imeCounter: \(imeCounter), fieldCounter: \(fieldCounter))")
-                #endif
-                
-                // Use IME batch edit with counters from TV response
-                // Increment counters for next use (TV will send updated counters in response)
-                let currentImeCounter = imeCounter
-                let currentFieldCounter = fieldCounter
-                
-                imeCounter += 1
-                fieldCounter += 1
-                
-                let imeMessage = IMEBatchEdit(text: text, imeCounter: currentImeCounter, fieldCounter: currentFieldCounter)
-                remoteManager.send(imeMessage)
-                
-                #if DEBUG
-                print("[AndroidTVAdapter] ✅ IME batch edit sent for text: '\(text)'")
-                print("[AndroidTVAdapter] Used counters - imeCounter: \(currentImeCounter), fieldCounter: \(currentFieldCounter)")
-                print("[AndroidTVAdapter] Next counters will be - imeCounter: \(imeCounter), fieldCounter: \(fieldCounter)")
-                #endif
-                return
-            }
+                // Handle text input and other special cases
+                if case .textInput(let text) = action {
+                    #if DEBUG
+                    print("[AndroidTVAdapter] 📝 Sending text input: \(text)")
+                    #endif
+                    try await sendText(text, remoteManager: remoteManager)
+                    return
+                }
                 if case .openApp(let url) = action {
                     #if DEBUG
                     print("[AndroidTVAdapter] 🔗 Sending deep link: \(url)")
@@ -815,127 +762,74 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
 
     private func sendText(_ text: String, remoteManager: RemoteManager) async throws {
         #if DEBUG
-        print("[AndroidTVAdapter] 📝 sendText() called with text: '\(text)' (length: \(text.count))")
+        print("[AndroidTVAdapter] 📝 Sending text input using IME batch edit protocol: '\(text)'")
         #endif
         
-        // Send each character as individual key presses
-        for (index, character) in text.enumerated() {
-            #if DEBUG
-            print("[AndroidTVAdapter] 📝 Processing character \(index + 1)/\(text.count): '\(character)'")
-            #endif
-            
-            if let key = mapCharacterToKey(character) {
-                #if DEBUG
-                print("[AndroidTVAdapter] 📝 Mapped '\(character)' to key: \(key) (rawValue: \(key.rawValue))")
-                print("[AndroidTVAdapter] 📡 Sending KeyPress for character '\(character)'...")
-                #endif
-                
-                remoteManager.send(KeyPress(key, .SHORT))
-                
-                #if DEBUG
-                print("[AndroidTVAdapter] ✅ KeyPress sent for '\(character)'")
-                #endif
-                
-                // Small delay between characters for reliability
-                try await Task.sleep(nanoseconds: 50_000_000) // 50ms
-            } else if character == "\n" {
-                #if DEBUG
-                print("[AndroidTVAdapter] 📝 Sending ENTER key for newline")
-                #endif
-                remoteManager.send(KeyPress(.KEYCODE_ENTER, .SHORT))
-                try await Task.sleep(nanoseconds: 50_000_000)
-            } else if character == "\u{8}" || character == "\u{7F}" {
-                #if DEBUG
-                print("[AndroidTVAdapter] 📝 Sending DELETE key for backspace")
-                #endif
-                remoteManager.send(KeyPress(.KEYCODE_DEL, .SHORT))
-                try await Task.sleep(nanoseconds: 50_000_000)
-            } else {
-                #if DEBUG
-                print("[AndroidTVAdapter] ⚠️ Character '\(character)' not mapped, skipping")
-                #endif
-            }
-        }
+        // Use the proper text input protocol (IME batch edit)
+        // This sends the entire text at once using the Android TV Remote Protocol
+        let textInput = TextInput(text)
+        remoteManager.send(textInput)
         
         #if DEBUG
-        print("[AndroidTVAdapter] ✅ Finished sending text: '\(text)'")
+        print("[AndroidTVAdapter] ✅ Text input sent successfully")
         #endif
     }
 
     private func mapCharacterToKey(_ character: Character) -> Key? {
         let char = character.lowercased()
-        let isUppercase = character.isUppercase
         
-        #if DEBUG
-        print("[AndroidTVAdapter] 🔤 mapCharacterToKey: '\(character)' (lowercase: '\(char)', uppercase: \(isUppercase))")
-        #endif
-        
-        let key: Key?
         switch char {
-        case "a": key = .KEYCODE_A
-        case "b": key = .KEYCODE_B
-        case "c": key = .KEYCODE_C
-        case "d": key = .KEYCODE_D
-        case "e": key = .KEYCODE_E
-        case "f": key = .KEYCODE_F
-        case "g": key = .KEYCODE_G
-        case "h": key = .KEYCODE_H
-        case "i": key = .KEYCODE_I
-        case "j": key = .KEYCODE_J
-        case "k": key = .KEYCODE_K
-        case "l": key = .KEYCODE_L
-        case "m": key = .KEYCODE_M
-        case "n": key = .KEYCODE_N
-        case "o": key = .KEYCODE_O
-        case "p": key = .KEYCODE_P
-        case "q": key = .KEYCODE_Q
-        case "r": key = .KEYCODE_R
-        case "s": key = .KEYCODE_S
-        case "t": key = .KEYCODE_T
-        case "u": key = .KEYCODE_U
-        case "v": key = .KEYCODE_V
-        case "w": key = .KEYCODE_W
-        case "x": key = .KEYCODE_X
-        case "y": key = .KEYCODE_Y
-        case "z": key = .KEYCODE_Z
-        case "0": key = .KEYCODE_0
-        case "1": key = .KEYCODE_1
-        case "2": key = .KEYCODE_2
-        case "3": key = .KEYCODE_3
-        case "4": key = .KEYCODE_4
-        case "5": key = .KEYCODE_5
-        case "6": key = .KEYCODE_6
-        case "7": key = .KEYCODE_7
-        case "8": key = .KEYCODE_8
-        case "9": key = .KEYCODE_9
-        case " ": key = .KEYCODE_SPACE
-        case ".": key = .KEYCODE_PERIOD
-        case ",": key = .KEYCODE_COMMA
-        case "-": key = .KEYCODE_MINUS
-        case "=": key = .KEYCODE_EQUALS
-        case "[": key = .KEYCODE_LEFT_BRACKET
-        case "]": key = .KEYCODE_RIGHT_BRACKET
-        case "\\": key = .KEYCODE_BACKSLASH
-        case ";": key = .KEYCODE_SEMICOLON
-        case "'": key = .KEYCODE_APOSTROPHE
-        case "/": key = .KEYCODE_SLASH
-        case "@": key = .KEYCODE_AT
-        case "+": key = .KEYCODE_PLUS
+        case "a": return .KEYCODE_A
+        case "b": return .KEYCODE_B
+        case "c": return .KEYCODE_C
+        case "d": return .KEYCODE_D
+        case "e": return .KEYCODE_E
+        case "f": return .KEYCODE_F
+        case "g": return .KEYCODE_G
+        case "h": return .KEYCODE_H
+        case "i": return .KEYCODE_I
+        case "j": return .KEYCODE_J
+        case "k": return .KEYCODE_K
+        case "l": return .KEYCODE_L
+        case "m": return .KEYCODE_M
+        case "n": return .KEYCODE_N
+        case "o": return .KEYCODE_O
+        case "p": return .KEYCODE_P
+        case "q": return .KEYCODE_Q
+        case "r": return .KEYCODE_R
+        case "s": return .KEYCODE_S
+        case "t": return .KEYCODE_T
+        case "u": return .KEYCODE_U
+        case "v": return .KEYCODE_V
+        case "w": return .KEYCODE_W
+        case "x": return .KEYCODE_X
+        case "y": return .KEYCODE_Y
+        case "z": return .KEYCODE_Z
+        case "0": return .KEYCODE_0
+        case "1": return .KEYCODE_1
+        case "2": return .KEYCODE_2
+        case "3": return .KEYCODE_3
+        case "4": return .KEYCODE_4
+        case "5": return .KEYCODE_5
+        case "6": return .KEYCODE_6
+        case "7": return .KEYCODE_7
+        case "8": return .KEYCODE_8
+        case "9": return .KEYCODE_9
+        case " ": return .KEYCODE_SPACE
+        case ".": return .KEYCODE_PERIOD
+        case ",": return .KEYCODE_COMMA
+        case "-": return .KEYCODE_MINUS
+        case "=": return .KEYCODE_EQUALS
+        case "[": return .KEYCODE_LEFT_BRACKET
+        case "]": return .KEYCODE_RIGHT_BRACKET
+        case "\\": return .KEYCODE_BACKSLASH
+        case ";": return .KEYCODE_SEMICOLON
+        case "'": return .KEYCODE_APOSTROPHE
+        case "/": return .KEYCODE_SLASH
+        case "@": return .KEYCODE_AT
+        case "+": return .KEYCODE_PLUS
         default:
-            key = nil
+            return nil
         }
-        
-        #if DEBUG
-        if let mappedKey = key {
-            print("[AndroidTVAdapter] 🔤 Mapped '\(character)' to key: \(mappedKey) (rawValue: \(mappedKey.rawValue))")
-        } else {
-            print("[AndroidTVAdapter] 🔤 No mapping found for '\(character)'")
-        }
-        #endif
-        
-        // For uppercase letters, Android TV Remote Protocol doesn't reliably support SHIFT
-        // Most TVs will accept lowercase keys and the input field will handle case
-        // If uppercase is needed, we could try SHIFT down + key + SHIFT up, but it's unreliable
-        return key
     }
 }
