@@ -685,9 +685,26 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
                 }
                 if case .deleteCharacter = action {
                     #if DEBUG
-                    print("[AndroidTVAdapter] 🗑️ Sending delete (backspace)")
+                    print("[AndroidTVAdapter] 🗑️ Sending delete (backspace) using IME batch edit")
                     #endif
-                    remoteManager.send(KeyPress(.KEYCODE_DEL, mapDirection(direction)))
+                    
+                    // Close keyboard if open, then focus field
+                    remoteManager.send(KeyPress(.KEYCODE_BACK, .SHORT))
+                    try await Task.sleep(nanoseconds: 50_000_000) // 50ms
+                    
+                    remoteManager.send(KeyPress(.KEYCODE_DPAD_CENTER, .SHORT))
+                    try await Task.sleep(nanoseconds: 50_000_000) // 50ms
+                    
+                    // Increment IME counter for delete operation
+                    imeCounter += 1
+                    
+                    // Use IME batch edit for delete (more reliable)
+                    let deleteMessage = IMEDelete(deleteCount: 1, imeCounter: imeCounter, fieldCounter: imeFieldCounter)
+                    remoteManager.send(deleteMessage)
+                    
+                    #if DEBUG
+                    print("[AndroidTVAdapter] ✅ Delete sent successfully")
+                    #endif
                     return
                 }
                 if case .enter = action {
@@ -890,27 +907,30 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
         print("[AndroidTVAdapter] Using ime_counter: \(imeCounter), field_counter: \(imeFieldCounter)")
         #endif
 
-        // When TV keyboard is open, we need to ensure the text field is focused first
-        // Send DPAD_CENTER to activate/focus the text field before sending IME text
-        // This helps when the TV's on-screen keyboard is visible
+        // When TV keyboard is open, the text field might not be focused
+        // Send BACK to close keyboard first, then focus the field
         #if DEBUG
-        print("[AndroidTVAdapter] 🎯 Focusing text field first (sending DPAD_CENTER)")
+        print("[AndroidTVAdapter] 📍 Closing TV keyboard and ensuring text field focus")
         #endif
-        remoteManager.send(KeyPress(.KEYCODE_DPAD_CENTER, .SHORT))
         
-        // Small delay to allow the field to be focused/activated
+        // Close keyboard if open (BACK key)
+        remoteManager.send(KeyPress(.KEYCODE_BACK, .SHORT))
         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        
+        // Focus the text field
+        remoteManager.send(KeyPress(.KEYCODE_DPAD_CENTER, .SHORT))
+        try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+
+        // Increment IME counter for new text input
+        imeCounter += 1
 
         // Use the proper text input protocol (RemoteImeBatchEdit - field 21)
         // Based on https://github.com/tronikos/androidtvremote2
         let textInput = TextInput(text, imeCounter: imeCounter, fieldCounter: imeFieldCounter)
         remoteManager.send(textInput)
-        
-        // Increment IME counter after sending (for next message)
-        imeCounter += 1
 
         #if DEBUG
-        print("[AndroidTVAdapter] ✅ Text input sent successfully, incremented ime_counter to \(imeCounter)")
+        print("[AndroidTVAdapter] ✅ Text input sent successfully")
         #endif
     }
 
