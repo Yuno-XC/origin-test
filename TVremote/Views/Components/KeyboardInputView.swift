@@ -119,6 +119,7 @@ struct FullScreenKeyboardView: View {
     let onSendCharacter: (String) -> Void
     let onDelete: () -> Void
     let onEnter: () -> Void
+    let onSendText: (String) -> Void  // New callback for sending full text
 
     @State private var text = ""
     @FocusState private var isFocused: Bool
@@ -170,8 +171,13 @@ struct FullScreenKeyboardView: View {
                         handleTextChange(old: oldValue, new: newValue)
                     }
                     .onSubmit {
+                        // Send the full text when Enter is pressed
+                        if !text.isEmpty {
+                            // Send entire text as one message
+                            onSendText(text)
+                            text = ""
+                        }
                         onEnter()
-                        text = ""
                     }
 
                 // Action buttons
@@ -193,6 +199,12 @@ struct FullScreenKeyboardView: View {
                     }
 
                     Button(action: {
+                        // Send the full text when Done is clicked
+                        if !text.isEmpty {
+                            // Send entire text as one message
+                            onSendText(text)
+                            text = ""
+                        }
                         isPresented = false
                     }) {
                         Text("Done")
@@ -216,15 +228,8 @@ struct FullScreenKeyboardView: View {
     }
 
     private func handleTextChange(old: String, new: String) {
-        if new.count > old.count {
-            let addedChar = String(new.suffix(new.count - old.count))
-            onSendCharacter(addedChar)
-        } else if new.count < old.count {
-            let deletedCount = old.count - new.count
-            for _ in 0..<deletedCount {
-                onDelete()
-            }
-        }
+        // Don't send characters immediately - just update local text
+        // Text will be sent when "Done" is clicked
     }
 }
 
@@ -238,7 +243,8 @@ struct FullScreenKeyboardView: View {
             isPresented: .constant(true),
             onSendCharacter: { print("Char: \($0)") },
             onDelete: { print("Delete") },
-            onEnter: { print("Enter") }
+            onEnter: { print("Enter") },
+            onSendText: { print("Text: \($0)") }
         )
     }
 }

@@ -2,133 +2,147 @@
 //  TextInput.swift
 //  TVremote
 //
-//  Text input implementation for Android TV Remote Protocol
-//  Based on documentation from @starscodermoh
+//  Text input implementation using RemoteImeBatchEdit protocol
+//  Based on Android TV Remote Protocol v2 remotemessage.proto
 //
+//  Protocol structure (from https://github.com/tronikos/androidtvremote2):
+//
+//  message RemoteMessage {
+//    RemoteImeBatchEdit remote_ime_batch_edit = 21;
+//  }
+//
+//  message RemoteImeBatchEdit {
+//    int32 ime_counter = 1;
+//    int32 field_counter = 2;
+//    repeated RemoteEditInfo edit_info = 3;
+//  }
+//
+//  message RemoteEditInfo {
+//    int32 insert = 1;
+//    RemoteImeObject text_field_status = 2;
+//  }
+//
+//  message RemoteImeObject {
+//    int32 start = 1;
+//    int32 end = 2;
+//    string value = 3;
+//  }
 
 import Foundation
 import AndroidTVRemoteControl
 
-/// Text input message for Android TV Remote Protocol
-/// Implements the IME (Input Method Editor) batch edit protocol
+/// Text input message using RemoteImeBatchEdit protocol
 public struct TextInput: RequestDataProtocol {
     let text: String
-    
-    public init(_ text: String) {
+    let imeCounter: Int
+    let fieldCounter: Int
+
+    /// Create a text input message
+    /// - Parameters:
+    ///   - text: The text to send to Android TV
+    ///   - imeCounter: IME counter from TV response (default 0)
+    ///   - fieldCounter: Field counter from TV response (default 0)
+    public init(_ text: String, imeCounter: Int = 0, fieldCounter: Int = 0) {
         self.text = text
+        self.imeCounter = imeCounter
+        self.fieldCounter = fieldCounter
     }
-    
+
     public var data: Data {
-        // Convert text to ASCII values
-        let asciiValues = text.utf8.map { UInt8($0) }
-        let asciiLen = asciiValues.count
-        
-        #if DEBUG
-        print("[TextInput] Building payload for text: '\(text)' (ASCII: \(asciiValues), len: \(asciiLen))")
-        #endif
-        
-        // Build payload following the exact format from documentation:
-        // [170, 1, len3, 8, 0, 16, 0, 26, len2, 8, 0, 18, len1, 8, 11, 16, 11, 26, ascii_len, asciiValues...]
-        // Where:
-        // - 170 = 0xAA = field tag for remoteImeBatchEdit (field 21, wire type 2)
-        // - 1 = varint length of the embedded message (will be calculated)
-        // - The rest is the RemoteImeBatchEdit message
-        
         // Build from innermost to outermost
-        // Step 1: Start with ASCII values
-        var payload: [UInt8] = asciiValues
-        
-        // Step 2: Prepend ASCII length
-        payload.insert(UInt8(asciiLen), at: 0)
-        
-        // Step 3: Prepend [8, 11, 16, 11, 26] and calculate len1
-        // [8, 11, 16, 11, 26] represents protobuf fields in RemoteImeObject
-        // For "A": len1 = 9, block = [8, 11, 16, 11, 26, 1, 65] = 7 bytes
-        let header1: [UInt8] = [8, 11, 16, 11, 26]
-        let block1Content = header1.count + payload.count // 7 bytes
-        let len1 = UInt8(block1Content + 2) // 7 + 2 = 9
-        payload.insert(contentsOf: header1, at: 0)
-        payload.insert(len1, at: 0)
-        
-        // Step 4: Prepend [8, 0, 18] and calculate len2
-        // [8, 0, 18] represents protobuf fields in RemoteEditInfo
-        // For "A": len2 = 13, block = [8, 0, 18, 9, 8, 11, 16, 11, 26, 1, 65] = 11 bytes
-        let header2: [UInt8] = [8, 0, 18]
-        let block2Content = header2.count + payload.count // 11 bytes
-        let len2 = UInt8(block2Content + 2) // 11 + 2 = 13
-        payload.insert(contentsOf: header2, at: 0)
-        payload.insert(len2, at: 0)
-        
-        // Step 5: Prepend [8, 0, 16, 0, 26] and calculate len3
-        // [8, 0, 16, 0, 26] represents protobuf fields in RemoteImeBatchEdit
-        // For "A": len3 = 18, block = [8, 0, 16, 0, 26, 13, 8, 0, 18, 9, 8, 11, 16, 11, 26, 1, 65] = 17 bytes
-        let header3: [UInt8] = [8, 0, 16, 0, 26]
-        let block3Size = header3.count + payload.count // 17 bytes
-        let len3 = UInt8(block3Size + 1) // 17 + 1 = 18
-        payload.insert(contentsOf: header3, at: 0)
-        payload.insert(len3, at: 0)
-        
-        // Step 6: Prepend field tag and varint length
-        // - 170 (0xAA) = field tag for remoteImeBatchEdit (field 21, wire type 2)
-        // - After the field tag, we need the varint-encoded length of the embedded message
-        // The length is the size of everything after it (len3 + header3 + rest of payload)
-        // But wait - len3 already includes the length of the block after it
-        // So the total message length is: len3 (which includes header3 + len2 + len1 + ascii)
-        
-        // Looking at the user's example: [170, 1, 18, 8, 0, 16, 0, 26, ...]
-        // The `1` is suspicious - it should be the varint length, but len3 is 18
-        // Maybe `1` is correct and len3 is something else? Or maybe the format wraps it differently?
-        
-        // Actually, re-reading: maybe `1` is a field number (field 1) in a wrapper?
-        // Or maybe the format is: [170, field_tag_1, len3, ...] where field_tag_1 = (1 << 3) | wire_type?
-        // Field 1, wire type 2 = (1 << 3) | 2 = 8 | 2 = 10, not 1
-        
-        // Let me try a different interpretation: maybe the format is NOT standard protobuf
-        // and `1` is just a constant. But that doesn't make sense either.
-        
-        // For now, let's try using the actual varint length (len3 = 18)
-        // In protobuf, varint(18) = 18 (single byte since 18 < 128)
-        let fieldTag: UInt8 = 170 // 0xAA = field 21, wire type 2
-        // The length of the RemoteImeBatchEdit message is len3
-        // But varint encoding for 18 is just [18], not [1]
-        // So maybe we should use [170, 18, ...] instead of [170, 1, ...]
-        // But the user's doc shows [170, 1, ...], so let's try both approaches
-        
-        // Actually, let me check if maybe `1` is correct and len3 is encoded differently
-        // Or maybe the entire structure needs to be wrapped differently
-        
-        // For now, following the user's exact format: [170, 1, len3, ...]
-        // But this might be wrong - the TV is rejecting it
-        let fixedHeader: [UInt8] = [170, 1]
-        payload.insert(contentsOf: fixedHeader, at: 0)
-        
+
+        // 1. Build RemoteImeObject
+        //    message RemoteImeObject {
+        //      int32 start = 1;
+        //      int32 end = 2;
+        //      string value = 3;
+        //    }
+        var imeObject = Data()
+        let paramValue = max(0, text.count - 1)
+
+        // Field 1: start (int32) = text.count - 1
+        imeObject.append(0x08) // Field tag: (1 << 3) | 0 = 8
+        imeObject.append(contentsOf: encodeVarint(UInt64(paramValue)))
+
+        // Field 2: end (int32) = text.count - 1
+        imeObject.append(0x10) // Field tag: (2 << 3) | 0 = 16
+        imeObject.append(contentsOf: encodeVarint(UInt64(paramValue)))
+
+        // Field 3: value (string) = text
+        imeObject.append(0x1A) // Field tag: (3 << 3) | 2 = 26
+        let textData = Data(text.utf8)
+        imeObject.append(contentsOf: encodeVarint(UInt64(textData.count)))
+        imeObject.append(textData)
+
+        // 2. Build RemoteEditInfo
+        //    message RemoteEditInfo {
+        //      int32 insert = 1;
+        //      RemoteImeObject text_field_status = 2;
+        //    }
+        var editInfo = Data()
+
+        // Field 1: insert (int32) = 1
+        editInfo.append(0x08) // Field tag: (1 << 3) | 0 = 8
+        editInfo.append(0x01) // Value: 1
+
+        // Field 2: text_field_status (embedded message)
+        editInfo.append(0x12) // Field tag: (2 << 3) | 2 = 18
+        editInfo.append(contentsOf: encodeVarint(UInt64(imeObject.count)))
+        editInfo.append(imeObject)
+
+        // 3. Build RemoteImeBatchEdit
+        //    message RemoteImeBatchEdit {
+        //      int32 ime_counter = 1;
+        //      int32 field_counter = 2;
+        //      repeated RemoteEditInfo edit_info = 3;
+        //    }
+        var batchEdit = Data()
+
+        // Field 1: ime_counter (int32)
+        batchEdit.append(0x08) // Field tag: (1 << 3) | 0 = 8
+        batchEdit.append(contentsOf: encodeVarint(UInt64(imeCounter)))
+
+        // Field 2: field_counter (int32)
+        batchEdit.append(0x10) // Field tag: (2 << 3) | 0 = 16
+        batchEdit.append(contentsOf: encodeVarint(UInt64(fieldCounter)))
+
+        // Field 3: edit_info (repeated embedded message)
+        batchEdit.append(0x1A) // Field tag: (3 << 3) | 2 = 26
+        batchEdit.append(contentsOf: encodeVarint(UInt64(editInfo.count)))
+        batchEdit.append(editInfo)
+
+        // 4. Build RemoteMessage
+        //    message RemoteMessage {
+        //      RemoteImeBatchEdit remote_ime_batch_edit = 21;
+        //    }
+        var message = Data()
+
+        // Field 21: remote_ime_batch_edit (embedded message)
+        // Field tag: (21 << 3) | 2 = 168 + 2 = 170 = 0xAA
+        message.append(0xAA) // Field tag high bits
+        message.append(0x01) // Field tag low bits (varint continuation for field 21)
+        message.append(contentsOf: encodeVarint(UInt64(batchEdit.count)))
+        message.append(batchEdit)
+
         #if DEBUG
-        print("[TextInput] Final payload (without varint length prefix): \(payload)")
-        print("[TextInput] Payload length: \(payload.count) bytes")
-        print("[TextInput] Payload hex: \(payload.map { String(format: "%02X", $0) }.joined(separator: " "))")
-        print("[TextInput] Note: RemoteManager will add varint length prefix automatically")
-        print("[TextInput] Expected format: [170, 1, len3, 8, 0, 16, 0, 26, len2, 8, 0, 18, len1, 8, 11, 16, 11, 26, ascii_len, asciiValues...]")
-        
-        // Verify against example for "A": [170, 1, 18, 8, 0, 16, 0, 26, 13, 8, 0, 18, 9, 8, 11, 16, 11, 26, 1, 65]
-        // (without total_len since RemoteManager adds it)
-        if text == "A" {
-            let expected: [UInt8] = [170, 1, 18, 8, 0, 16, 0, 26, 13, 8, 0, 18, 9, 8, 11, 16, 11, 26, 1, 65]
-            if payload == expected {
-                print("[TextInput] ✅ Payload matches expected format for 'A'")
-            } else {
-                print("[TextInput] ⚠️ Payload mismatch for 'A'")
-                print("[TextInput] Expected: \(expected)")
-                print("[TextInput] Got:      \(payload)")
-                print("[TextInput] Differences:")
-                for i in 0..<min(expected.count, payload.count) {
-                    if expected[i] != payload[i] {
-                        print("[TextInput]   Index \(i): expected \(expected[i]), got \(payload[i])")
-                    }
-                }
-            }
-        }
+        print("[TextInput] Built IME batch edit message for text: '\(text)'")
+        print("[TextInput] ime_counter: \(imeCounter), field_counter: \(fieldCounter)")
+        print("[TextInput] Message size: \(message.count) bytes")
+        print("[TextInput] Message hex: \(message.map { String(format: "%02x", $0) }.joined(separator: " "))")
         #endif
-        
-        return Data(payload)
+
+        return message
+    }
+
+    /// Encode unsigned integer as protocol buffer varint
+    private func encodeVarint(_ value: UInt64) -> [UInt8] {
+        var result: [UInt8] = []
+        var v = value
+        while v > 127 {
+            result.append(UInt8(v & 0x7F) | 0x80)
+            v >>= 7
+        }
+        result.append(UInt8(v))
+        return result
     }
 }

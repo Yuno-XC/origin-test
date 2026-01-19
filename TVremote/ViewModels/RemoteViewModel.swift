@@ -271,7 +271,11 @@ final class RemoteViewModel: ObservableObject {
     func sendCharacter(_ char: String) {
         guard !char.isEmpty else { return }
 
-        lightHaptic()
+        #if DEBUG
+        print("[RemoteViewModel] 📝 Sending text: '\(char)'")
+        #endif
+        
+        hapticFeedback()
         Task {
             try? await adapter.send(.textInput(char))
         }

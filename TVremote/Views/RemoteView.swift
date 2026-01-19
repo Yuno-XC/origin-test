@@ -68,9 +68,21 @@ struct RemoteView: View {
             if showKeyboard {
                 FullScreenKeyboardView(
                     isPresented: $showKeyboard,
-                    onSendCharacter: { viewModel.sendCharacter($0) },
-                    onDelete: { viewModel.deleteCharacter() },
-                    onEnter: { viewModel.sendEnter() }
+                    onSendCharacter: { char in
+                        // Not used anymore - text is sent when Done is clicked
+                        viewModel.sendCharacter(char)
+                    },
+                    onDelete: { 
+                        // Delete is handled locally in the text field
+                    },
+                    onEnter: { 
+                        // Enter key after text is sent
+                        viewModel.sendEnter() 
+                    },
+                    onSendText: { fullText in
+                        // Send the entire text when Done/Enter is clicked
+                        viewModel.sendText(fullText)
+                    }
                 )
                 .transition(.opacity)
             }
