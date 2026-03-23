@@ -43,6 +43,11 @@ final class AppViewModel: ObservableObject {
         adapter.connectionState
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
+                // #region agent log
+                #if DEBUG
+                DebugPerfLogger.log(location: "AppViewModel.swift:setupBindings", message: "ConnectionState changed", hypothesisId: "E", data: ["state": "\(state)"])
+                #endif
+                // #endregion
                 self?.connectionState = state
                 self?.handleConnectionStateChange(state)
             }

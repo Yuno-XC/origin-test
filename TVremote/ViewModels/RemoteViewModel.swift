@@ -84,10 +84,20 @@ final class RemoteViewModel: ObservableObject {
         }
 
         // Repeat action while held
+        let capturedAction = action
         longPressTask = Task {
+            var iter = 0
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
                 if Task.isCancelled { break }
+                // #region agent log
+                #if DEBUG
+                iter += 1
+                await MainActor.run {
+                    DebugPerfLogger.log(location: "RemoteViewModel.swift:longPressTask", message: "LongPress loop iter", hypothesisId: "B", data: ["iteration": "\(iter)", "action": "\(String(describing: capturedAction))"])
+                }
+                #endif
+                // #endregion
                 lightHaptic()
             }
         }

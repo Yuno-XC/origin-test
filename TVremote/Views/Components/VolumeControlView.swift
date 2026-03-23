@@ -60,6 +60,9 @@ struct VolumeControlButton: View {
     private let haptic = UIImpactFeedbackGenerator(style: .light)
     private let timer = Timer.publish(every: 0.15, on: .main, in: .common).autoconnect()
     @State private var repeatCount = 0
+    // #region agent log
+    @State private var timerFireCount = 0
+    // #endregion
 
     var body: some View {
         ZStack {
@@ -101,6 +104,14 @@ struct VolumeControlButton: View {
                 }
         )
         .onReceive(timer) { _ in
+            // #region agent log
+            #if DEBUG
+            timerFireCount += 1
+            if timerFireCount % 20 == 0 {
+                DebugPerfLogger.log(location: "VolumeControlView.swift:onReceive", message: "Timer fire", hypothesisId: "A", data: ["count": "\(timerFireCount)", "isPressed": "\(isPressed)"])
+            }
+            #endif
+            // #endregion
             if isPressed {
                 repeatCount += 1
                 if repeatCount > 2 { // Start repeating after short delay

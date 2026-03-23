@@ -140,7 +140,14 @@ struct DiscoveryView: View {
     // MARK: - Discovered Devices Section
 
     private var discoveredDevicesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        // #region agent log
+        let _ = {
+            #if DEBUG
+            DebugPerfLogger.log(location: "DiscoveryView.swift:discoveredDevicesSection", message: "Filter eval", hypothesisId: "D", data: ["devices": "\(viewModel.devices.count)", "saved": "\(viewModel.savedDevices.count)"])
+            #endif
+        }()
+        // #endregion
+        return VStack(alignment: .leading, spacing: 12) {
             Text("DISCOVERED")
                 .font(.caption)
                 .fontWeight(.semibold)
