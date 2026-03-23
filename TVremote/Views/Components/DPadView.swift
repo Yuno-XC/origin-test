@@ -21,9 +21,6 @@ struct DPadView: View {
     @State private var activeDirection: Direction?
     @State private var centerPressed = false
     @State private var dragOffset: CGSize = .zero
-    // #region agent log
-    @State private var dragChangeCount = 0
-    // #endregion
 
     private let size: CGFloat = 240
     private let centerSize: CGFloat = 80
@@ -99,14 +96,6 @@ struct DPadView: View {
     // MARK: - Gesture Handling
 
     private func handleDragChange(_ value: DragGesture.Value) {
-        // #region agent log
-        #if DEBUG
-        dragChangeCount += 1
-        if dragChangeCount % 30 == 0 {
-            DebugPerfLogger.log(location: "DPadView.swift:handleDragChange", message: "Drag change", hypothesisId: "C", data: ["count": "\(dragChangeCount)"])
-        }
-        #endif
-        // #endregion
         let location = value.location
         let center = CGPoint(x: size / 2, y: size / 2)
         let distance = hypot(location.x - center.x, location.y - center.y)

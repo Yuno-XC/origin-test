@@ -140,22 +140,13 @@ struct DiscoveryView: View {
     // MARK: - Discovered Devices Section
 
     private var discoveredDevicesSection: some View {
-        // #region agent log
-        let _ = {
-            #if DEBUG
-            DebugPerfLogger.log(location: "DiscoveryView.swift:discoveredDevicesSection", message: "Filter eval", hypothesisId: "D", data: ["devices": "\(viewModel.devices.count)", "saved": "\(viewModel.savedDevices.count)"])
-            #endif
-        }()
-        // #endregion
-        return VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("DISCOVERED")
                 .font(.caption)
                 .fontWeight(.semibold)
                 .foregroundColor(Color(.systemGray))
 
-            ForEach(viewModel.devices.filter { device in
-                !viewModel.savedDevices.contains { $0.host == device.host }
-            }) { device in
+            ForEach(viewModel.newlyDiscoveredDevices) { device in
                 DeviceRow(
                     device: device,
                     isSaved: false,

@@ -133,4 +133,10 @@ final class DiscoveryViewModel: ObservableObject {
     var hasDevices: Bool {
         !allDevices.isEmpty
     }
+
+    /// Devices discovered but not yet saved - avoids O(n*m) filter in view body
+    var newlyDiscoveredDevices: [TVDevice] {
+        let savedHosts = Set(savedDevices.map { $0.host })
+        return devices.filter { !savedHosts.contains($0.host) }
+    }
 }

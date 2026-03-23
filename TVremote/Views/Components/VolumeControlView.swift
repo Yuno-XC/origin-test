@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import Combine
 
 struct VolumeControlView: View {
     let onVolumeUp: () -> Void
@@ -55,14 +54,9 @@ struct VolumeControlButton: View {
     let action: () -> Void
 
     @State private var isPressed = false
-    @GestureState private var isHolding = false
+    @State private var repeatTask: Task<Void, Never>?
 
     private let haptic = UIImpactFeedbackGenerator(style: .light)
-    private let timer = Timer.publish(every: 0.15, on: .main, in: .common).autoconnect()
-    @State private var repeatCount = 0
-    // #region agent log
-    @State private var timerFireCount = 0
-    // #endregion
 
     var body: some View {
         ZStack {
@@ -95,33 +89,34 @@ struct VolumeControlButton: View {
                         isPressed = true
                         haptic.impactOccurred()
                         action()
-                        repeatCount = 0
+                        startRepeatTask()
                     }
                 }
                 .onEnded { _ in
                     isPressed = false
-                    repeatCount = 0
+                    repeatTask?.cancel()
+                    repeatTask = nil
                 }
         )
-        .onReceive(timer) { _ in
-            // #region agent log
-            #if DEBUG
-            timerFireCount += 1
-            if timerFireCount % 20 == 0 {
-                DebugPerfLogger.log(location: "VolumeControlView.swift:onReceive", message: "Timer fire", hypothesisId: "A", data: ["count": "\(timerFireCount)", "isPressed": "\(isPressed)"])
-            }
-            #endif
-            // #endregion
-            if isPressed {
-                repeatCount += 1
-                if repeatCount > 2 { // Start repeating after short delay
-                    haptic.impactOccurred()
-                    action()
-                }
-            }
-        }
         .onAppear {
             haptic.prepare()
+        }
+    }
+
+    private func startRepeatTask() {
+        repeatTask?.cancel()
+        let capturedAction = action
+        repeatTask = Task { @MainActor in
+            var count = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 150_000_000)
+                if Task.isCancelled { break }
+                count += 1
+                if count > 2 {
+                    haptic.impactOccurred()
+                    capturedAction()
+                }
+            }
         }
     }
 }
