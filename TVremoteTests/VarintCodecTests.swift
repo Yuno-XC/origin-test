@@ -167,4 +167,18 @@ final class VarintCodecTests: XCTestCase {
         XCTAssertEqual(decoded.0, 9_999)
         XCTAssertEqual(decoded.1, payload.count)
     }
+
+    func testDecode_varintStartsAtFinalByteOfBuffer() {
+        let bytes: [UInt8] = [0xFF, 0x7F]
+        let r = VarintCodec.decode(bytes, from: 1)
+        XCTAssertEqual(r?.0, 127)
+        XCTAssertEqual(r?.1, 1)
+    }
+
+    func testDecode_arrayFromOffset_equalToSingleByteVarintLength() {
+        let bytes: [UInt8] = [0x11, 0x22, 0x96, 0x01]
+        let r = VarintCodec.decode(bytes, from: 2)
+        XCTAssertEqual(r?.0, 150)
+        XCTAssertEqual(r?.1, 2)
+    }
 }

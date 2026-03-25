@@ -12,6 +12,19 @@ final class SonyBraviaTests: XCTestCase {
         super.tearDown()
     }
 
+    // MARK: - SonyBraviaError
+
+    func testSonyBraviaError_errorDescriptions() {
+        XCTAssertEqual(SonyBraviaError.invalidURL.errorDescription, "Invalid URL")
+        XCTAssertEqual(SonyBraviaError.invalidResponse.errorDescription, "Invalid response from TV")
+        XCTAssertEqual(SonyBraviaError.httpError(503).errorDescription, "HTTP error: 503")
+        XCTAssertEqual(SonyBraviaError.unsupportedCommand.errorDescription, "Unsupported command")
+        XCTAssertEqual(
+            SonyBraviaError.restAPIError(code: 12, message: "nope").errorDescription,
+            "REST API error 12: nope"
+        )
+    }
+
     // MARK: - IRCC mapping
 
     func testSonyBraviaIRCC_getIRCCCode_mapsNavigationAndMedia() {
@@ -38,6 +51,13 @@ final class SonyBraviaTests: XCTestCase {
         let ircc = SonyBraviaIRCC(host: "127.0.0.1")
         XCTAssertNil(ircc.getIRCCCode(for: .mediaRewind))
         XCTAssertNil(ircc.getIRCCCode(for: .mediaFastForward))
+    }
+
+    func testSonyBraviaIRCC_getIRCCCode_playPauseAndPauseMatchDocumentedCodes() {
+        let ircc = SonyBraviaIRCC(host: "127.0.0.1")
+        let center = "AAAAAQAAAAEAAABlAw=="
+        XCTAssertEqual(ircc.getIRCCCode(for: .mediaPlayPause), center)
+        XCTAssertEqual(ircc.getIRCCCode(for: .mediaPause), center)
     }
 
     // MARK: - IRCC HTTP (mocked)

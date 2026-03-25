@@ -37,6 +37,16 @@ final class ConnectionModelsTests: XCTestCase {
 
     // MARK: - PairingState
 
+    func testPairingState_displayText_coversAllCases() {
+        XCTAssertEqual(PairingState.starting.displayText, "Starting pairing...")
+        XCTAssertEqual(PairingState.waitingForCode.displayText, "Enter code shown on TV")
+        XCTAssertEqual(PairingState.validatingCode.displayText, "Validating...")
+        XCTAssertEqual(PairingState.success.displayText, "Paired successfully")
+        let failed = PairingState.failed("bad")
+        XCTAssertTrue(failed.displayText.contains("bad"))
+        XCTAssertTrue(failed.displayText.hasPrefix("Pairing failed:"))
+    }
+
     func testPairingState_displayText_failedIncludesReason() {
         let text = PairingState.failed("bad").displayText
         XCTAssertTrue(text.contains("bad"))
@@ -63,6 +73,15 @@ final class ConnectionModelsTests: XCTestCase {
     func testConnectionError_equatable() {
         XCTAssertEqual(ConnectionError.pairingFailed("a"), ConnectionError.pairingFailed("a"))
         XCTAssertNotEqual(ConnectionError.pairingFailed("a"), ConnectionError.pairingFailed("b"))
+    }
+
+    func testConnectionError_localizedDescription_coversRemainingCases() {
+        XCTAssertEqual(ConnectionError.networkUnavailable.localizedDescription, "Network unavailable")
+        XCTAssertEqual(ConnectionError.deviceUnreachable.localizedDescription, "TV not reachable")
+        XCTAssertEqual(ConnectionError.pairingRequired.localizedDescription, "Pairing required")
+        XCTAssertEqual(ConnectionError.connectionLost.localizedDescription, "Connection lost")
+        XCTAssertEqual(ConnectionError.timeout.localizedDescription, "Connection timed out")
+        XCTAssertEqual(ConnectionError.certificateError.localizedDescription, "Security error")
     }
 
     func testConnectionState_equatable() {

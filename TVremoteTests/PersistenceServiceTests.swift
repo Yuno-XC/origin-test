@@ -107,4 +107,21 @@ final class PersistenceServiceTests: XCTestCase {
         sut.saveDevice(b)
         XCTAssertEqual(sut.loadDevices().map(\.host), ["10.0.0.30", "10.0.0.31"])
     }
+
+    func testRemoveDevice_preservesLastConnectedWhenRemovingOtherHost() throws {
+        let primary = TVDevice(name: "Main", host: "10.0.0.40")
+        let other = TVDevice(name: "Guest", host: "10.0.0.41")
+        sut.saveDevice(primary)
+        sut.saveDevice(other)
+        sut.setLastConnectedDevice(primary)
+        let before = try XCTUnwrap(sut.getLastConnectedDevice())
+        XCTAssertEqual(before.host, primary.host)
+
+        sut.removeDevice(other)
+
+        let after = try XCTUnwrap(sut.getLastConnectedDevice())
+        XCTAssertEqual(after.host, primary.host)
+        XCTAssertEqual(sut.loadDevices().count, 1)
+        XCTAssertEqual(sut.loadDevices().first?.host, primary.host)
+    }
 }

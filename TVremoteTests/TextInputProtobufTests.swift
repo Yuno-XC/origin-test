@@ -68,4 +68,23 @@ final class TextInputProtobufTests: XCTestCase {
         XCTAssertNotNil(RemoteImeProtobuf.imeCounters(from: data))
         XCTAssertTrue(data.contains(0x1A), "RemoteImeObject.value (field 3) is length-delimited tag 26")
     }
+
+    /// `TextInput` uses `Swift.String.count` for start/end (grapheme clusters), not UTF-8 byte length.
+    func testSingleCharacter_startEndVarintsAreZero() {
+        let data = TextInput("x", imeCounter: 0, fieldCounter: 0).data
+        XCTAssertTrue(
+            data.contains(Data([0x08, 0x00])),
+            "RemoteImeObject.start = max(0, count - 1) = 0"
+        )
+        XCTAssertTrue(data.contains(Data([0x10, 0x00])), "RemoteImeObject.end matches start for one character")
+    }
+
+    func testEmoji_usesCharacterCountForStartEnd_notScalarCount() {
+        let text = "👨‍👩‍👧"
+        let data = TextInput(text, imeCounter: 1, fieldCounter: 1).data
+        let expectedPos = max(0, text.count - 1)
+        XCTAssertEqual(expectedPos, 0, "one extended grapheme cluster → start/end 0")
+        XCTAssertTrue(data.contains(Data([0x08, 0x00])))
+        XCTAssertTrue(data.contains(Data([0x10, 0x00])))
+    }
 }

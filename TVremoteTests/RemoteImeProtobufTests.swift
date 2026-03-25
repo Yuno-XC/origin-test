@@ -205,4 +205,13 @@ final class RemoteImeProtobufTests: XCTestCase {
         XCTAssertEqual(r?.imeCounter, 2)
         XCTAssertEqual(r?.fieldCounter, 3)
     }
+
+    func testImeCounters_duplicateFieldCounter_lastValueWins() {
+        let inner: [UInt8] = [0x08, 0x0A, 0x10, 0x01, 0x10, 0x02]
+        var outer: [UInt8] = [0xAA, 0x01, UInt8(inner.count)]
+        outer.append(contentsOf: inner)
+        let r = RemoteImeProtobuf.imeCounters(from: Data(outer))
+        XCTAssertEqual(r?.imeCounter, 10)
+        XCTAssertEqual(r?.fieldCounter, 2)
+    }
 }
