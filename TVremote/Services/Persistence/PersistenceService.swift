@@ -41,7 +41,7 @@ final class PersistenceService: PersistenceProtocol {
         var devices = loadDevices()
 
         // Update or add device
-        if let index = devices.firstIndex(where: { $0.host == device.host }) {
+        if let index = devices.firstIndex(where: { $0.host == device.host && $0.port == device.port }) {
             devices[index] = device
         } else {
             devices.append(device)

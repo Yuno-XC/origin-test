@@ -153,6 +153,7 @@ final class MockDiscoveryService: DeviceDiscoveryProtocol {
     }
 
     var manualConnectResult: Result<TVDevice, Error> = .failure(DiscoveryError.invalidAddress)
+    private(set) var manualConnectCalls: [(host: String, port: Int)] = []
 
     func startScanning() {
         scanningSubject.send(true)
@@ -163,6 +164,7 @@ final class MockDiscoveryService: DeviceDiscoveryProtocol {
     }
 
     func manualConnect(host: String, port: Int) async throws -> TVDevice {
+        manualConnectCalls.append((host, port))
         switch manualConnectResult {
         case .success(let device):
             return device

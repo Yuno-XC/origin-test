@@ -6,18 +6,10 @@
 //
 
 import Foundation
-import Combine
-import SwiftUI
 import UIKit
 
 @MainActor
-final class RemoteViewModel: ObservableObject {
-    // MARK: - Published Properties
-
-    @Published var showKeyboard = false
-    @Published var keyboardText = ""
-    @Published private(set) var isTypingMode = false
-
+final class RemoteViewModel {
     // MARK: - Services
 
     private let adapter: any TVRemoteAdapterProtocol
@@ -35,6 +27,10 @@ final class RemoteViewModel: ObservableObject {
         self.adapter = adapter
         feedbackGenerator.prepare()
         lightFeedback.prepare()
+    }
+
+    deinit {
+        longPressTask?.cancel()
     }
 
     // MARK: - Remote Actions
@@ -247,17 +243,6 @@ final class RemoteViewModel: ObservableObject {
     }
 
     // MARK: - Text Input
-
-    func openKeyboard() {
-        showKeyboard = true
-        isTypingMode = true
-        keyboardText = ""
-    }
-
-    func closeKeyboard() {
-        showKeyboard = false
-        isTypingMode = false
-    }
 
     func sendText(_ text: String) {
         guard !text.isEmpty else { return }

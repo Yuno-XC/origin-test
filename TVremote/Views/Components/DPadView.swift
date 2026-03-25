@@ -20,11 +20,6 @@ struct DPadView: View {
 
     @State private var activeDirection: Direction?
     @State private var centerPressed = false
-    @State private var dragOffset: CGSize = .zero
-
-    private let size: CGFloat = 240
-    private let centerSize: CGFloat = 80
-    private let haptic = UIImpactFeedbackGenerator(style: .medium)
 
     enum Direction {
         case up, down, left, right
@@ -33,101 +28,103 @@ struct DPadView: View {
     // MARK: - Body
 
     var body: some View {
-        ZStack {
-            // Outer ring with gradient
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color(.systemGray5),
-                            Color(.systemGray6)
-                        ],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: size / 2
+        GeometryReader { geo in
+            let ringSize = min(geo.size.width, geo.size.height) * 0.94
+            let centerDiameter = ringSize * (80.0 / 240.0)
+            ZStack {
+                // Outer ring with gradient
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color(.systemGray5),
+                                Color(.systemGray6)
+                            ],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: ringSize / 2
+                        )
                     )
-                )
-                .frame(width: size, height: size)
-                .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
+                    .frame(width: ringSize, height: ringSize)
+                    .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
 
-            // Direction indicators
-            DirectionIndicators(
-                size: size,
-                activeDirection: activeDirection
+                // Direction indicators
+                DirectionIndicators(
+                    size: ringSize,
+                    activeDirection: activeDirection
+                )
+
+                // Center button
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: centerPressed
+                                ? [Color(.systemGray3), Color(.systemGray4)]
+                                : [Color(.systemGray4), Color(.systemGray5)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: centerDiameter, height: centerDiameter)
+                    .shadow(
+                        color: .black.opacity(centerPressed ? 0.1 : 0.2),
+                        radius: centerPressed ? 2 : 5,
+                        y: centerPressed ? 1 : 3
+                    )
+                    .scaleEffect(centerPressed ? 0.95 : 1.0)
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                    )
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        handleDragChange(value, ringSize: ringSize, centerDiameter: centerDiameter)
+                    }
+                    .onEnded { value in
+                        handleDragEnd(value, ringSize: ringSize, centerDiameter: centerDiameter)
+                    }
             )
-
-            // Center button
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: centerPressed
-                            ? [Color(.systemGray3), Color(.systemGray4)]
-                            : [Color(.systemGray4), Color(.systemGray5)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .frame(width: centerSize, height: centerSize)
-                .shadow(
-                    color: .black.opacity(centerPressed ? 0.1 : 0.2),
-                    radius: centerPressed ? 2 : 5,
-                    y: centerPressed ? 1 : 3
-                )
-                .scaleEffect(centerPressed ? 0.95 : 1.0)
-                .overlay(
-                    Circle()
-                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                )
         }
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    handleDragChange(value)
-                }
-                .onEnded { value in
-                    handleDragEnd(value)
-                }
-        )
-        .onAppear {
-            haptic.prepare()
-        }
+        .aspectRatio(1, contentMode: .fit)
     }
 
     // MARK: - Gesture Handling
 
-    private func handleDragChange(_ value: DragGesture.Value) {
+    private func handleDragChange(_ value: DragGesture.Value, ringSize: CGFloat, centerDiameter: CGFloat) {
         let location = value.location
-        let center = CGPoint(x: size / 2, y: size / 2)
+        let center = CGPoint(x: ringSize / 2, y: ringSize / 2)
         let distance = hypot(location.x - center.x, location.y - center.y)
 
-        // Check if in center zone
-        if distance < centerSize / 2 {
-            if !centerPressed {
-                centerPressed = true
-                activeDirection = nil
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            // Check if in center zone
+            if distance < centerDiameter / 2 {
+                if !centerPressed {
+                    centerPressed = true
+                    activeDirection = nil
+                }
+                return
             }
-            return
-        }
 
-        centerPressed = false
+            centerPressed = false
 
-        // Determine direction
-        let angle = atan2(location.y - center.y, location.x - center.x)
-        let direction = directionFromAngle(angle)
+            // Determine direction
+            let angle = atan2(location.y - center.y, location.x - center.x)
+            let direction = directionFromAngle(angle)
 
-        if direction != activeDirection {
-            activeDirection = direction
+            if direction != activeDirection {
+                activeDirection = direction
+            }
         }
     }
 
-    private func handleDragEnd(_ value: DragGesture.Value) {
-        let location = value.location
-        let center = CGPoint(x: size / 2, y: size / 2)
-        let distance = hypot(location.x - center.x, location.y - center.y)
-
-        // Check for swipe
+    private func handleDragEnd(_ value: DragGesture.Value, ringSize: CGFloat, centerDiameter: CGFloat) {
         let translation = value.translation
-        let swipeThreshold: CGFloat = 30
+        let swipeThreshold = max(ringSize * 0.12, 20)
 
         if abs(translation.width) > swipeThreshold || abs(translation.height) > swipeThreshold {
             // Swipe gesture
@@ -146,7 +143,7 @@ struct DPadView: View {
             }
         } else if centerPressed {
             // Center tap
-            haptic.impactOccurred()
+            SharedHaptics.impactMedium()
             onCenter()
         } else if let direction = activeDirection {
             // Direction tap
@@ -161,7 +158,7 @@ struct DPadView: View {
     }
 
     private func triggerDirection(_ direction: Direction) {
-        haptic.impactOccurred()
+        SharedHaptics.impactMedium()
 
         switch direction {
         case .up: onUp()
@@ -234,7 +231,7 @@ struct DirectionArrow: View {
             .font(.system(size: 20, weight: .semibold))
             .foregroundColor(isActive ? .white : Color(.systemGray2))
             .scaleEffect(isActive ? 1.2 : 1.0)
-            .animation(.easeOut(duration: 0.1), value: isActive)
+            .animation(nil, value: isActive)
     }
 
     private var directionName: String {

@@ -8,6 +8,61 @@ import XCTest
 
 @MainActor
 final class AppViewModelTests: XCTestCase {
+    // MARK: - NavigationState
+
+    func testNavigationState_equatable() {
+        let d1 = TVDevice(name: "A", host: "10.0.0.1")
+        let d2 = TVDevice(name: "B", host: "10.0.0.2")
+        XCTAssertEqual(AppViewModel.NavigationState.discovery, .discovery)
+        XCTAssertEqual(AppViewModel.NavigationState.pairing(d1), .pairing(d1))
+        XCTAssertNotEqual(AppViewModel.NavigationState.pairing(d1), .pairing(d2))
+        XCTAssertEqual(AppViewModel.NavigationState.remote(d1), .remote(d1))
+        XCTAssertNotEqual(AppViewModel.NavigationState.remote(d1), .remote(d2))
+        XCTAssertNotEqual(AppViewModel.NavigationState.discovery, .remote(d1))
+    }
+
+    func testInit_lastConnectedPaired_autoConnects() async throws {
+        let adapter = MockTVRemoteAdapter()
+        let persistence = MockPersistence()
+        let device = TVDevice(name: "Remembered", host: "10.0.0.200", isPaired: true)
+        persistence.setLastConnectedDevice(device)
+        _ = AppViewModel(adapter: adapter, persistence: persistence)
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(adapter.connectCalls.count, 1)
+        XCTAssertEqual(adapter.connectCalls.first?.host, "10.0.0.200")
+    }
+
+    func testInit_lastConnectedNotPaired_doesNotAutoConnect() async throws {
+        let adapter = MockTVRemoteAdapter()
+        let persistence = MockPersistence()
+        var device = TVDevice(name: "Guest", host: "10.0.0.201", isPaired: false)
+        persistence.saveDevice(device)
+        persistence.setLastConnectedDevice(device)
+        _ = AppViewModel(adapter: adapter, persistence: persistence)
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertTrue(adapter.connectCalls.isEmpty)
+    }
+
+    func testAdapterEmitsConnected_keepsConnectedDeviceInSync() async throws {
+        let adapter = MockTVRemoteAdapter()
+        let persistence = MockPersistence()
+        let vm = AppViewModel(adapter: adapter, persistence: persistence)
+        let device = TVDevice(name: "TV", host: "10.0.0.202", isPaired: true)
+        await vm.connect(to: device)
+        adapter.pushConnectionState(.connected)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(vm.connectedDevice?.host, device.host)
+    }
+
+    func testSend_whenAdapterThrows_doesNotCrash() async {
+        struct SendErr: Error {}
+        let adapter = MockTVRemoteAdapter()
+        adapter.sendBehavior = .failure(SendErr())
+        let vm = AppViewModel(adapter: adapter, persistence: MockPersistence())
+        await vm.send(.volumeUp)
+        XCTAssertEqual(adapter.sentActions.last, .volumeUp)
+    }
+
     func testConnect_pairedSuccess_navigatesToRemoteAndPersists() async {
         let adapter = MockTVRemoteAdapter()
         let persistence = MockPersistence()
@@ -160,6 +215,33 @@ final class AppViewModelTests: XCTestCase {
         }
     }
 
+    func testStartPairing_success_forwardsToAdapterAndPublishesWaitingForCode() async {
+        let adapter = MockTVRemoteAdapter()
+        let device = TVDevice(name: "TV", host: "10.0.0.59", isPaired: false)
+        let vm = AppViewModel(adapter: adapter, persistence: MockPersistence())
+
+        await vm.startPairing(for: device)
+
+        XCTAssertEqual(adapter.startPairingCalls, [device])
+        XCTAssertEqual(vm.connectionState, .pairing(.waitingForCode))
+    }
+
+    func testConnectionLost_schedulesReconnectForConnectedDevice() async throws {
+        let adapter = MockTVRemoteAdapter()
+        let persistence = MockPersistence()
+        let vm = AppViewModel(adapter: adapter, persistence: persistence)
+        let device = TVDevice(name: "Living Room", host: "10.0.0.61", isPaired: true)
+
+        await vm.connect(to: device)
+        XCTAssertEqual(adapter.connectCalls.count, 1)
+
+        adapter.pushConnectionState(.error(.connectionLost))
+        try await Task.sleep(for: .milliseconds(2300))
+
+        XCTAssertEqual(adapter.connectCalls.count, 2)
+        XCTAssertEqual(adapter.connectCalls.last?.host, device.host)
+    }
+
     func testSkipPairingAndConnect_invokesConnect() async throws {
         let adapter = MockTVRemoteAdapter()
         let persistence = MockPersistence()
@@ -170,5 +252,16 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertEqual(adapter.connectCalls.count, 1)
         XCTAssertEqual(adapter.connectCalls.first?.host, "10.0.0.60")
         XCTAssertTrue(persistence.loadDevices().first { $0.host == "10.0.0.60" }?.isPaired == true)
+    }
+
+    func testSkipPairingAndConnect_disconnectsExistingSessionBeforeReconnect() async throws {
+        let adapter = MockTVRemoteAdapter()
+        let vm = AppViewModel(adapter: adapter, persistence: MockPersistence())
+
+        vm.skipPairingAndConnect(device: TVDevice(name: "TV", host: "10.0.0.62", isPaired: false))
+        try await Task.sleep(for: .milliseconds(400))
+
+        XCTAssertEqual(adapter.disconnectCount, 1)
+        XCTAssertEqual(adapter.connectCalls.last?.host, "10.0.0.62")
     }
 }

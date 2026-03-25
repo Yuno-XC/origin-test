@@ -15,6 +15,8 @@ final class DiscoveryViewModel: ObservableObject {
 
     @Published private(set) var devices: [TVDevice] = []
     @Published private(set) var savedDevices: [TVDevice] = []
+    @Published private(set) var allDevices: [TVDevice] = []
+    @Published private(set) var newlyDiscoveredDevices: [TVDevice] = []
     @Published private(set) var isScanning = false
     @Published var showManualEntry = false
     @Published var manualIP = ""
@@ -44,13 +46,16 @@ final class DiscoveryViewModel: ObservableObject {
 
     private func setupBindings() {
         discoveryService.discoveredDevices
+            .removeDuplicates()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] devices in
                 self?.devices = devices
+                self?.rebuildDeviceLists()
             }
             .store(in: &cancellables)
 
         discoveryService.isScanning
+            .removeDuplicates()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] scanning in
                 self?.isScanning = scanning
@@ -59,7 +64,25 @@ final class DiscoveryViewModel: ObservableObject {
     }
 
     private func loadSavedDevices() {
-        savedDevices = persistence.loadDevices()
+        let loadedDevices = persistence.loadDevices()
+        if loadedDevices != savedDevices {
+            savedDevices = loadedDevices
+            rebuildDeviceLists()
+        }
+    }
+
+    private func rebuildDeviceLists() {
+        let savedHosts = Set(savedDevices.map(\.host))
+        let discoveredOnly = devices.filter { !savedHosts.contains($0.host) }
+        let mergedDevices = savedDevices + discoveredOnly
+
+        if newlyDiscoveredDevices != discoveredOnly {
+            newlyDiscoveredDevices = discoveredOnly
+        }
+
+        if allDevices != mergedDevices {
+            allDevices = mergedDevices
+        }
     }
 
     // MARK: - Actions
@@ -122,26 +145,7 @@ final class DiscoveryViewModel: ObservableObject {
 
     // MARK: - Computed Properties
 
-    var allDevices: [TVDevice] {
-        // Combine discovered and saved, removing duplicates
-        var result = savedDevices
-
-        for device in devices {
-            if !result.contains(where: { $0.host == device.host }) {
-                result.append(device)
-            }
-        }
-
-        return result
-    }
-
     var hasDevices: Bool {
         !allDevices.isEmpty
-    }
-
-    /// Devices discovered but not yet saved - avoids O(n*m) filter in view body
-    var newlyDiscoveredDevices: [TVDevice] {
-        let savedHosts = Set(savedDevices.map { $0.host })
-        return devices.filter { !savedHosts.contains($0.host) }
     }
 }

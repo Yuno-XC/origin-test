@@ -9,40 +9,42 @@ import SwiftUI
 
 struct RemoteView: View {
     let device: TVDevice
-    @EnvironmentObject private var appViewModel: AppViewModel
-    @StateObject private var viewModel: RemoteViewModel
+    @State private var viewModel: RemoteViewModel
 
     @State private var showKeyboard = false
     @State private var showSettings = false
 
     init(device: TVDevice, adapter: any TVRemoteAdapterProtocol) {
         self.device = device
-        _viewModel = StateObject(wrappedValue: RemoteViewModel(adapter: adapter))
+        _viewModel = State(initialValue: RemoteViewModel(adapter: adapter))
     }
 
     var body: some View {
-        ZStack {
-            // Background
-            backgroundGradient
+        GeometryReader { geo in
+            let sideRailWidth = geo.size.width * 0.175
+            let mainStackSpacing = geo.size.height * 0.028
 
-            // Main content
-            VStack(spacing: 0) {
-                // Top bar
-                topBar
+            ZStack {
+                // Background
+                backgroundGradient
 
-                // Remote layout
-                GeometryReader { geometry in
+                // Main content
+                VStack(spacing: 0) {
+                    // Top bar
+                    RemoteTopBar(showSettings: $showSettings)
+
+                    // Remote layout
                     HStack(spacing: 0) {
                         // Volume control (left side)
-                        volumeControl
-                            .frame(width: 70)
+                        volumeControl(leadingPadding: geo.size.width * 0.03)
+                            .frame(width: sideRailWidth)
 
                         // Main controls (center)
-                        VStack(spacing: 24) {
+                        VStack(spacing: mainStackSpacing) {
                             Spacer()
 
                             // Power button
-                            powerButton
+                            powerButton(minSide: min(geo.size.width, geo.size.height))
 
                             // D-Pad
                             dPadSection
@@ -59,32 +61,32 @@ struct RemoteView: View {
 
                         // Placeholder for symmetry
                         Color.clear
-                            .frame(width: 70)
+                            .frame(width: sideRailWidth)
                     }
                 }
-            }
 
-            // Keyboard overlay
-            if showKeyboard {
-                FullScreenKeyboardView(
-                    isPresented: $showKeyboard,
-                    onSendCharacter: { char in
-                        // Not used anymore - text is sent when Done is clicked
-                        viewModel.sendCharacter(char)
-                    },
-                    onDelete: { 
-                        // Delete is handled locally in the text field
-                    },
-                    onEnter: { 
-                        // Enter key after text is sent
-                        viewModel.sendEnter() 
-                    },
-                    onSendText: { fullText in
-                        // Send the entire text when Done/Enter is clicked
-                        viewModel.sendText(fullText)
-                    }
-                )
-                .transition(.opacity)
+                // Keyboard overlay
+                if showKeyboard {
+                    FullScreenKeyboardView(
+                        isPresented: $showKeyboard,
+                        onSendCharacter: { char in
+                            // Not used anymore - text is sent when Done is clicked
+                            viewModel.sendCharacter(char)
+                        },
+                        onDelete: {
+                            // Delete is handled locally in the text field
+                        },
+                        onEnter: {
+                            // Enter key after text is sent
+                            viewModel.sendEnter()
+                        },
+                        onSendText: { fullText in
+                            // Send the entire text when Done/Enter is clicked
+                            viewModel.sendText(fullText)
+                        }
+                    )
+                    .transition(.opacity)
+                }
             }
         }
         .sheet(isPresented: $showSettings) {
@@ -107,43 +109,9 @@ struct RemoteView: View {
         .ignoresSafeArea()
     }
 
-    // MARK: - Top Bar
-
-    private var topBar: some View {
-        HStack {
-            // Back button
-            Button(action: {
-                appViewModel.disconnect()
-            }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "chevron.left")
-                    Text("TVs")
-                }
-                .font(.subheadline)
-                .foregroundColor(.blue)
-            }
-
-            Spacer()
-
-            // Connection status
-            StatusBadge(isConnected: appViewModel.connectionState.isConnected)
-
-            Spacer()
-
-            // Settings button
-            Button(action: { showSettings = true }) {
-                Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 22))
-                    .foregroundColor(Color(.systemGray))
-            }
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 12)
-    }
-
     // MARK: - Volume Control
 
-    private var volumeControl: some View {
+    private func volumeControl(leadingPadding: CGFloat) -> some View {
         VStack {
             Spacer()
 
@@ -155,17 +123,18 @@ struct RemoteView: View {
 
             Spacer()
         }
-        .padding(.leading, 12)
+        .padding(.leading, leadingPadding)
     }
 
     // MARK: - Power Button
 
-    private var powerButton: some View {
-        Button(action: { viewModel.power() }) {
+    private func powerButton(minSide: CGFloat) -> some View {
+        let diameter = minSide * 0.108
+        return Button(action: { viewModel.power() }) {
             Image(systemName: "power")
-                .font(.system(size: 20, weight: .medium))
+                .font(.system(size: diameter * 0.42, weight: .medium))
                 .foregroundColor(.red)
-                .frame(width: 44, height: 44)
+                .frame(width: diameter, height: diameter)
                 .background(
                     Circle()
                         .fill(Color(.systemGray6))
@@ -224,12 +193,57 @@ struct RemoteView: View {
     }
 }
 
+private struct RemoteTopBar: View {
+    @Binding var showSettings: Bool
+    @ObservedObject private var appViewModel: AppViewModel
+
+    init(
+        showSettings: Binding<Bool>,
+        appViewModel: AppViewModel = .shared
+    ) {
+        _showSettings = showSettings
+        _appViewModel = ObservedObject(wrappedValue: appViewModel)
+    }
+
+    var body: some View {
+        HStack {
+            Button(action: appViewModel.disconnect) {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.left")
+                    Text("TVs")
+                }
+                .font(.subheadline)
+                .foregroundStyle(.blue)
+            }
+
+            Spacer()
+
+            StatusBadge(isConnected: appViewModel.connectionState.isConnected)
+
+            Spacer()
+
+            Button(action: { showSettings = true }) {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 22))
+                    .foregroundStyle(Color(.systemGray))
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 12)
+    }
+}
+
 // MARK: - Settings Sheet
 
 struct SettingsSheet: View {
     let device: TVDevice
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var appViewModel: AppViewModel
+    @ObservedObject private var appViewModel: AppViewModel
+
+    init(device: TVDevice, appViewModel: AppViewModel = .shared) {
+        self.device = device
+        _appViewModel = ObservedObject(wrappedValue: appViewModel)
+    }
 
     var body: some View {
         NavigationStack {
@@ -318,5 +332,4 @@ struct SettingsSheet: View {
         device: TVDevice(name: "Living Room TV", host: "192.168.1.100", isPaired: true),
         adapter: AndroidTVAdapter()
     )
-    .environmentObject(AppViewModel.shared)
 }

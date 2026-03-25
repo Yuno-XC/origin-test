@@ -16,12 +16,16 @@ final class DeviceDiscoveryService: NSObject, DeviceDiscoveryProtocol {
     private var browser: NWBrowser?
     private var netServiceBrowser: NetServiceBrowser?
     private var resolving: [NetService] = []
+    private var resolvingServiceKeys = Set<String>()
+    private var scanStopWorkItem: DispatchWorkItem?
 
     private var devicesSubject = CurrentValueSubject<[TVDevice], Never>([])
     private var scanningSubject = CurrentValueSubject<Bool, Never>(false)
 
     private var foundDevices: Set<TVDevice> = []
     private let queue = DispatchQueue(label: "com.tvremote.discovery", qos: .userInitiated)
+    private let stateLock = NSLock()
+    private var coalescedPublishWorkItem: DispatchWorkItem?
 
     // Android TV Remote service type
     private let serviceType = "_androidtvremote2._tcp."
@@ -53,8 +57,16 @@ final class DeviceDiscoveryService: NSObject, DeviceDiscoveryProtocol {
         guard !scanningSubject.value else { return }
 
         scanningSubject.send(true)
+        coalescedPublishWorkItem?.cancel()
+        coalescedPublishWorkItem = nil
+        stateLock.lock()
         foundDevices.removeAll()
-        devicesSubject.send([])
+        resolvingServiceKeys.removeAll()
+        stateLock.unlock()
+        scanStopWorkItem?.cancel()
+        if !devicesSubject.value.isEmpty {
+            devicesSubject.send([])
+        }
 
         // Use NetServiceBrowser for mDNS discovery
         startNetServiceBrowser()
@@ -63,13 +75,34 @@ final class DeviceDiscoveryService: NSObject, DeviceDiscoveryProtocol {
         startNWBrowser()
 
         // Stop after 30 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+        let stopWorkItem = DispatchWorkItem { [weak self] in
             self?.stopScanning()
         }
+        scanStopWorkItem = stopWorkItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: stopWorkItem)
     }
 
     func stopScanning() {
+        guard scanningSubject.value || browser != nil || netServiceBrowser != nil || !resolving.isEmpty else {
+            return
+        }
+
         scanningSubject.send(false)
+        scanStopWorkItem?.cancel()
+        scanStopWorkItem = nil
+
+        coalescedPublishWorkItem?.cancel()
+        coalescedPublishWorkItem = nil
+
+        stateLock.lock()
+        let finalDevices = sortedDeviceList(from: foundDevices)
+        stateLock.unlock()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if self.devicesSubject.value != finalDevices {
+                self.devicesSubject.send(finalDevices)
+            }
+        }
 
         browser?.cancel()
         browser = nil
@@ -79,6 +112,9 @@ final class DeviceDiscoveryService: NSObject, DeviceDiscoveryProtocol {
 
         resolving.forEach { $0.stop() }
         resolving.removeAll()
+        stateLock.lock()
+        resolvingServiceKeys.removeAll()
+        stateLock.unlock()
     }
 
     func manualConnect(host: String, port: Int = 6466) async throws -> TVDevice {
@@ -153,6 +189,12 @@ final class DeviceDiscoveryService: NSObject, DeviceDiscoveryProtocol {
     }
 
     private func resolveService(name: String, type: String, domain: String) {
+        let key = serviceKey(name: name, type: type, domain: domain)
+        stateLock.lock()
+        let inserted = resolvingServiceKeys.insert(key).inserted
+        stateLock.unlock()
+        guard inserted else { return }
+
         let service = NetService(domain: domain, type: type, name: name)
         service.delegate = self
         resolving.append(service)
@@ -162,11 +204,46 @@ final class DeviceDiscoveryService: NSObject, DeviceDiscoveryProtocol {
     private func addDevice(name: String, host: String, port: Int) {
         let device = TVDevice(name: name, host: host, port: port)
 
-        if !foundDevices.contains(device) {
+        stateLock.lock()
+        let isNew = !foundDevices.contains(device)
+        if isNew {
             foundDevices.insert(device)
-            DispatchQueue.main.async {
-                self.devicesSubject.send(Array(self.foundDevices))
+        }
+        stateLock.unlock()
+
+        guard isNew else { return }
+        scheduleCoalescedDevicePublish()
+    }
+
+    /// Batches rapid Bonjour/NWBrowser updates so the UI is not repainted for every resolve callback.
+    private func scheduleCoalescedDevicePublish() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.coalescedPublishWorkItem?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.stateLock.lock()
+                let devices = self.sortedDeviceList(from: self.foundDevices)
+                self.stateLock.unlock()
+                if self.devicesSubject.value != devices {
+                    self.devicesSubject.send(devices)
+                }
             }
+            self.coalescedPublishWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
+        }
+    }
+
+    private func serviceKey(name: String, type: String, domain: String) -> String {
+        "\(name)|\(type)|\(domain)"
+    }
+
+    private func sortedDeviceList(from devices: Set<TVDevice>) -> [TVDevice] {
+        devices.sorted { lhs, rhs in
+            if lhs.name == rhs.name {
+                return lhs.host < rhs.host
+            }
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
         }
     }
 
@@ -190,13 +267,15 @@ final class DeviceDiscoveryService: NSObject, DeviceDiscoveryProtocol {
 
 extension DeviceDiscoveryService: NetServiceBrowserDelegate {
     func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
-        service.delegate = self
-        resolving.append(service)
-        service.resolve(withTimeout: 10.0)
+        resolveService(name: service.name, type: service.type, domain: service.domain)
     }
 
     func netServiceBrowser(_ browser: NetServiceBrowser, didRemove service: NetService, moreComing: Bool) {
         resolving.removeAll { $0 == service }
+        let key = serviceKey(name: service.name, type: service.type, domain: service.domain)
+        stateLock.lock()
+        resolvingServiceKeys.remove(key)
+        stateLock.unlock()
     }
 
     func netServiceBrowser(_ browser: NetServiceBrowser, didNotSearch errorDict: [String : NSNumber]) {
@@ -208,7 +287,14 @@ extension DeviceDiscoveryService: NetServiceBrowserDelegate {
 
 extension DeviceDiscoveryService: NetServiceDelegate {
     func netServiceDidResolveAddress(_ sender: NetService) {
-        guard let addresses = sender.addresses else { return }
+        let resolvedKey = serviceKey(name: sender.name, type: sender.type, domain: sender.domain)
+        guard let addresses = sender.addresses else {
+            resolving.removeAll { $0 == sender }
+            stateLock.lock()
+            resolvingServiceKeys.remove(resolvedKey)
+            stateLock.unlock()
+            return
+        }
 
         for data in addresses {
             data.withUnsafeBytes { (pointer: UnsafeRawBufferPointer) in
@@ -230,10 +316,17 @@ extension DeviceDiscoveryService: NetServiceDelegate {
         }
 
         resolving.removeAll { $0 == sender }
+        stateLock.lock()
+        resolvingServiceKeys.remove(resolvedKey)
+        stateLock.unlock()
     }
 
     func netService(_ sender: NetService, didNotResolve errorDict: [String : NSNumber]) {
         resolving.removeAll { $0 == sender }
+        let key = serviceKey(name: sender.name, type: sender.type, domain: sender.domain)
+        stateLock.lock()
+        resolvingServiceKeys.remove(key)
+        stateLock.unlock()
     }
 }
 

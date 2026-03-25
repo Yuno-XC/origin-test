@@ -91,8 +91,6 @@ struct MediaButton: View {
     var onRelease: (() -> Void)?
 
     @State private var isPressed = false
-    private let haptic = UIImpactFeedbackGenerator(style: .medium)
-
     init(
         icon: String,
         size: Size,
@@ -147,7 +145,7 @@ struct MediaButton: View {
                 .onChanged { _ in
                     if !isPressed {
                         isPressed = true
-                        haptic.impactOccurred()
+                        SharedHaptics.impactMedium()
                         onPress?()
                     }
                 }
@@ -160,9 +158,6 @@ struct MediaButton: View {
                     }
                 }
         )
-        .onAppear {
-            haptic.prepare()
-        }
     }
 }
 

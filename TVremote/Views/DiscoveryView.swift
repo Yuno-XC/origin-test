@@ -23,7 +23,7 @@ struct DiscoveryView: View {
 
                     // Content
                     ScrollView {
-                        VStack(spacing: 24) {
+                        LazyVStack(spacing: 24) {
                             // Scanning indicator
                             if viewModel.isScanning {
                                 scanningView
@@ -35,7 +35,7 @@ struct DiscoveryView: View {
                             }
 
                             // Discovered devices
-                            if !viewModel.devices.isEmpty {
+                            if !viewModel.newlyDiscoveredDevices.isEmpty {
                                 discoveredDevicesSection
                             }
 
@@ -52,13 +52,16 @@ struct DiscoveryView: View {
                 }
             }
             .navigationBarHidden(true)
-            .onAppear {
+            .task {
                 viewModel.startScanning()
                 viewModel.onDeviceSelected = { device in
                     Task {
                         await appViewModel.connect(to: device)
                     }
                 }
+            }
+            .onDisappear {
+                viewModel.stopScanning()
             }
             .sheet(isPresented: $viewModel.showManualEntry) {
                 ManualEntrySheet(viewModel: viewModel)

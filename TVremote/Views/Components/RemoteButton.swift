@@ -6,6 +6,23 @@
 //
 
 import SwiftUI
+import UIKit
+
+@MainActor
+private enum SharedHaptics {
+    static let medium = UIImpactFeedbackGenerator(style: .medium)
+    static let light = UIImpactFeedbackGenerator(style: .light)
+
+    static func impactMedium() {
+        medium.impactOccurred()
+        medium.prepare()
+    }
+
+    static func impactLight() {
+        light.impactOccurred()
+        light.prepare()
+    }
+}
 
 struct RemoteButton: View {
     let icon: String
@@ -15,9 +32,6 @@ struct RemoteButton: View {
     var onRelease: (() -> Void)?
 
     @State private var isPressed = false
-
-    private let haptic = UIImpactFeedbackGenerator(style: .medium)
-
     init(
         icon: String,
         label: String? = nil,
@@ -69,7 +83,7 @@ struct RemoteButton: View {
                 .onChanged { _ in
                     if !isPressed {
                         isPressed = true
-                        haptic.impactOccurred()
+                        SharedHaptics.impactMedium()
 
                         if longPressAction != nil {
                             longPressAction?()
@@ -86,9 +100,6 @@ struct RemoteButton: View {
                     }
                 }
         )
-        .onAppear {
-            haptic.prepare()
-        }
     }
 }
 
@@ -99,8 +110,6 @@ struct IconButton: View {
     let action: () -> Void
 
     @State private var isPressed = false
-    private let haptic = UIImpactFeedbackGenerator(style: .light)
-
     var body: some View {
         Image(systemName: icon)
             .font(.system(size: 20, weight: .medium))
@@ -116,7 +125,7 @@ struct IconButton: View {
                     .onChanged { _ in
                         if !isPressed {
                             isPressed = true
-                            haptic.impactOccurred()
+                            SharedHaptics.impactLight()
                         }
                     }
                     .onEnded { _ in
@@ -124,9 +133,6 @@ struct IconButton: View {
                         action()
                     }
             )
-            .onAppear {
-                haptic.prepare()
-            }
     }
 }
 
@@ -137,8 +143,6 @@ struct VolumeButton: View {
     let action: () -> Void
 
     @State private var isPressed = false
-    private let haptic = UIImpactFeedbackGenerator(style: .light)
-
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12)
@@ -168,7 +172,7 @@ struct VolumeButton: View {
                 .onChanged { _ in
                     if !isPressed {
                         isPressed = true
-                        haptic.impactOccurred()
+                        SharedHaptics.impactLight()
                     }
                 }
                 .onEnded { _ in
@@ -176,9 +180,6 @@ struct VolumeButton: View {
                     action()
                 }
         )
-        .onAppear {
-            haptic.prepare()
-        }
     }
 }
 

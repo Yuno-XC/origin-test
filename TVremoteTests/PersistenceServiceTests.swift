@@ -124,4 +124,34 @@ final class PersistenceServiceTests: XCTestCase {
         XCTAssertEqual(sut.loadDevices().count, 1)
         XCTAssertEqual(sut.loadDevices().first?.host, primary.host)
     }
+
+    func testSaveCertificate_loadCertificate_roundTrip() {
+        let device = TVDevice(name: "TV", host: "10.0.0.50")
+        let certificate = Data("certificate-data".utf8)
+
+        sut.saveCertificate(certificate, for: device)
+
+        XCTAssertEqual(sut.loadCertificate(for: device), certificate)
+    }
+
+    func testRemoveDevice_removesStoredCertificate() {
+        let device = TVDevice(name: "TV", host: "10.0.0.51")
+        sut.saveDevice(device)
+        sut.saveCertificate(Data("certificate".utf8), for: device)
+
+        sut.removeDevice(device)
+
+        XCTAssertNil(sut.loadCertificate(for: device))
+    }
+
+    func testSaveDevice_sameHostDifferentPort_keepsDistinctEntries() {
+        let first = TVDevice(name: "TV 80", host: "10.0.0.52", port: 80)
+        let second = TVDevice(name: "TV 6466", host: "10.0.0.52", port: 6466)
+
+        sut.saveDevice(first)
+        sut.saveDevice(second)
+
+        let loaded = sut.loadDevices().sorted { $0.port < $1.port }
+        XCTAssertEqual(loaded.map(\.port), [80, 6466])
+    }
 }

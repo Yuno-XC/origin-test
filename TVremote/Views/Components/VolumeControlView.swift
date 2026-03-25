@@ -55,9 +55,6 @@ struct VolumeControlButton: View {
 
     @State private var isPressed = false
     @State private var repeatTask: Task<Void, Never>?
-
-    private let haptic = UIImpactFeedbackGenerator(style: .light)
-
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 16)
@@ -87,7 +84,7 @@ struct VolumeControlButton: View {
                 .onChanged { _ in
                     if !isPressed {
                         isPressed = true
-                        haptic.impactOccurred()
+                        SharedHaptics.impactLight()
                         action()
                         startRepeatTask()
                     }
@@ -98,8 +95,9 @@ struct VolumeControlButton: View {
                     repeatTask = nil
                 }
         )
-        .onAppear {
-            haptic.prepare()
+        .onDisappear {
+            repeatTask?.cancel()
+            repeatTask = nil
         }
     }
 
@@ -113,7 +111,7 @@ struct VolumeControlButton: View {
                 if Task.isCancelled { break }
                 count += 1
                 if count > 2 {
-                    haptic.impactOccurred()
+                    SharedHaptics.impactLight()
                     capturedAction()
                 }
             }
@@ -128,8 +126,6 @@ struct MuteButton: View {
 
     @State private var isPressed = false
     @State private var isMuted = false
-    private let haptic = UIImpactFeedbackGenerator(style: .medium)
-
     var body: some View {
         ZStack {
             Circle()
@@ -150,7 +146,7 @@ struct MuteButton: View {
                 .onChanged { _ in
                     if !isPressed {
                         isPressed = true
-                        haptic.impactOccurred()
+                        SharedHaptics.impactMedium()
                     }
                 }
                 .onEnded { _ in
@@ -159,9 +155,6 @@ struct MuteButton: View {
                     action()
                 }
         )
-        .onAppear {
-            haptic.prepare()
-        }
     }
 }
 
