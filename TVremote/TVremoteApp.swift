@@ -21,7 +21,7 @@ struct TVremoteApp: App {
     }
 
     private func configureAppearance() {
-        // Set dark mode as default
+        // Default to dark mode for the remote-focused UI
         let scenes = UIApplication.shared.connectedScenes
         let windowScene = scenes.first as? UIWindowScene
         windowScene?.windows.forEach { window in
