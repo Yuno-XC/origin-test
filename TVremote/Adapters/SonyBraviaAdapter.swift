@@ -33,10 +33,10 @@ final class SonyBraviaAdapter: TVRemoteAdapterProtocol {
     
     // MARK: - Initialization
     
-    init(host: String, port: UInt16 = 80, authKey: String = "0000") {
+    init(host: String, port: UInt16 = 80, authKey: String = "0000", urlSession: URLSession = .shared) {
         // IRCC always uses port 80 (HTTP), regardless of device port
-        self.ircc = SonyBraviaIRCC(host: host, port: 80, authKey: authKey)
-        self.restAPI = SonyBraviaREST(host: host, port: 80, authKey: authKey)
+        self.ircc = SonyBraviaIRCC(host: host, port: 80, authKey: authKey, urlSession: urlSession)
+        self.restAPI = SonyBraviaREST(host: host, port: 80, authKey: authKey, urlSession: urlSession)
     }
     
     // MARK: - TVConnectionProtocol

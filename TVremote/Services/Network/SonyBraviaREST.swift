@@ -12,13 +12,14 @@ final class SonyBraviaREST {
     private let host: String
     private let port: UInt16
     private let authKey: String
-    private let session = URLSession.shared
+    private let session: URLSession
     private var authCookie: String? // Cookie received after successful PIN submission
-    
-    init(host: String, port: UInt16 = 80, authKey: String = "0000") {
+
+    init(host: String, port: UInt16 = 80, authKey: String = "0000", urlSession: URLSession = .shared) {
         self.host = host
         self.port = port
         self.authKey = authKey
+        self.session = urlSession
     }
     
     /// Set the authentication cookie (called after successful PIN submission)

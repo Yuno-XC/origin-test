@@ -14,13 +14,14 @@ final class SonyBraviaIRCC {
     private let port: UInt16
     private let authKey: String
     private var authCookie: String? // Cookie from PIN pairing (shared with REST API)
-    
-    private let session = URLSession.shared
-    
-    init(host: String, port: UInt16 = 80, authKey: String = "0000") {
+
+    private let session: URLSession
+
+    init(host: String, port: UInt16 = 80, authKey: String = "0000", urlSession: URLSession = .shared) {
         self.host = host
         self.port = port
         self.authKey = authKey
+        self.session = urlSession
     }
     
     /// Set the authentication cookie (called after successful PIN submission)

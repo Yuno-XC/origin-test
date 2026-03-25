@@ -22,8 +22,8 @@ final class DiscoveryViewModel: ObservableObject {
 
     // MARK: - Services
 
-    private let discoveryService = DeviceDiscoveryService()
-    private let persistence = PersistenceService.shared
+    private let discoveryService: DeviceDiscoveryProtocol
+    private let persistence: PersistenceProtocol
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Callbacks
@@ -32,7 +32,12 @@ final class DiscoveryViewModel: ObservableObject {
 
     // MARK: - Initialization
 
-    init() {
+    init(
+        discoveryService: DeviceDiscoveryProtocol = DeviceDiscoveryService(),
+        persistence: PersistenceProtocol = PersistenceService.shared
+    ) {
+        self.discoveryService = discoveryService
+        self.persistence = persistence
         setupBindings()
         loadSavedDevices()
     }

@@ -28,13 +28,18 @@ final class AppViewModel: ObservableObject {
 
     // MARK: - Services
 
-    let adapter = AndroidTVAdapter() // Made public so RemoteView can use the same instance
-    private let persistence = PersistenceService.shared
+    let adapter: any TVRemoteAdapterProtocol
+    private let persistence: PersistenceProtocol
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Initialization
 
-    init() {
+    init(
+        adapter: any TVRemoteAdapterProtocol = AndroidTVAdapter(),
+        persistence: PersistenceProtocol = PersistenceService.shared
+    ) {
+        self.adapter = adapter
+        self.persistence = persistence
         setupBindings()
         checkLastConnectedDevice()
     }

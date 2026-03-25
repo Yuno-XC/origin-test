@@ -15,7 +15,7 @@ struct RemoteView: View {
     @State private var showKeyboard = false
     @State private var showSettings = false
 
-    init(device: TVDevice, adapter: AndroidTVAdapter) {
+    init(device: TVDevice, adapter: any TVRemoteAdapterProtocol) {
         self.device = device
         _viewModel = StateObject(wrappedValue: RemoteViewModel(adapter: adapter))
     }

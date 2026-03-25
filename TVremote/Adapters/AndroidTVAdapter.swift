@@ -29,6 +29,12 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
     private var imeCounter: Int = 0
     private var imeFieldCounter: Int = 0
 
+    /// Synchronizes `connectToRemote` with `RemoteManager` async state (connected / error / timeout).
+    private let remoteWaitLock = NSLock()
+    private var remoteWaitToken: UInt64 = 0
+    private var activeRemoteWaitToken: UInt64?
+    private var remoteWaitContinuation: CheckedContinuation<Void, Error>?
+
     var connectionState: AnyPublisher<ConnectionState, Never> {
         stateSubject.eraseToAnyPublisher()
     }
@@ -206,11 +212,8 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
                     #endif
                     self.isPairing = false
                     self.stateSubject.send(.pairing(.success))
-                    // After pairing success, connect for remote control
-                    // RemoteManager is already set up from setupManagers() in startPairing()
-                    Task {
-                        try? await self.connectToRemote()
-                    }
+                    // Remote session is started from AppViewModel.connect after submitPairingCode.
+                    // Avoid a second connectToRemote here — parallel connects caused flaky handshakes.
                     
                 case .error(let error):
                     #if DEBUG
@@ -242,18 +245,21 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
                     #if DEBUG
                     print("[AndroidTVAdapter] ✅ Remote: Connected and ready")
                     #endif
+                    self.resolveRemoteHandshakeWait(with: .success(()))
                     self.stateSubject.send(.connected)
 
                 case .paired(let runningApp):
                     #if DEBUG
                     print("[AndroidTVAdapter] ✅ Remote: Paired, running app: \(runningApp ?? "Unknown")")
                     #endif
+                    self.resolveRemoteHandshakeWait(with: .success(()))
                     self.stateSubject.send(.connected)
 
                 case .error(let error):
                     #if DEBUG
                     print("[AndroidTVAdapter] ❌ Remote error: \(error)")
                     #endif
+                    self.resolveRemoteHandshakeWait(with: .failure(ConnectionError.connectionLost))
                     self.stateSubject.send(.error(.connectionLost))
 
                 default:
@@ -274,101 +280,12 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
 
     /// Parse received data for IME batch edit messages to update counters
     private func parseReceivedData(_ data: Data) {
-        // Look for RemoteImeBatchEdit message (field 21)
-        // Field tag for field 21, wire type 2 (length-delimited): (21 << 3) | 2 = 170
-        // Since 170 > 127, it's encoded as varint: [0xAA, 0x01]
-        guard data.count >= 4 else { return }
-
-        let bytes = Array(data)
-        var index = 0
-
-        while index < bytes.count - 1 {
-            // Check for field 21 tag (0xAA 0x01)
-            if bytes[index] == 0xAA && bytes[index + 1] == 0x01 {
-                index += 2
-
-                // Read length varint
-                guard let (messageLength, lengthBytes) = decodeVarint(Array(bytes[index...])) else { return }
-                index += lengthBytes
-
-                guard index + Int(messageLength) <= bytes.count else { return }
-
-                // Parse RemoteImeBatchEdit
-                let messageData = Array(bytes[index..<(index + Int(messageLength))])
-                parseImeBatchEdit(messageData)
-                return
-            }
-            index += 1
-        }
-    }
-
-    /// Parse RemoteImeBatchEdit message to extract counters
-    private func parseImeBatchEdit(_ data: [UInt8]) {
-        var index = 0
-        var newImeCounter: Int?
-        var newFieldCounter: Int?
-
-        while index < data.count {
-            guard let (fieldTag, tagBytes) = decodeVarint(Array(data[index...])) else { break }
-            index += tagBytes
-
-            let fieldNumber = fieldTag >> 3
-            let wireType = fieldTag & 0x07
-
-            switch (fieldNumber, wireType) {
-            case (1, 0): // ime_counter (varint)
-                guard let (value, valueBytes) = decodeVarint(Array(data[index...])) else { break }
-                newImeCounter = Int(value)
-                index += valueBytes
-
-            case (2, 0): // field_counter (varint)
-                guard let (value, valueBytes) = decodeVarint(Array(data[index...])) else { break }
-                newFieldCounter = Int(value)
-                index += valueBytes
-
-            case (_, 0): // Other varint
-                guard let (_, valueBytes) = decodeVarint(Array(data[index...])) else { break }
-                index += valueBytes
-
-            case (_, 2): // Length-delimited (skip)
-                guard let (length, lengthBytes) = decodeVarint(Array(data[index...])) else { break }
-                index += lengthBytes + Int(length)
-
-            default:
-                return // Unknown wire type
-            }
-        }
-
-        if let ime = newImeCounter, let field = newFieldCounter {
-            imeCounter = ime
-            imeFieldCounter = field
-            #if DEBUG
-            print("[AndroidTVAdapter] 📥 Received IME counters - ime: \(ime), field: \(field)")
-            #endif
-        }
-    }
-
-    /// Decode a varint from byte array, returns (value, bytesConsumed)
-    private func decodeVarint(_ bytes: [UInt8]) -> (UInt64, Int)? {
-        guard !bytes.isEmpty else { return nil }
-
-        var result: UInt64 = 0
-        var shift: UInt64 = 0
-        var index = 0
-
-        while index < bytes.count && index < 10 {
-            let byte = bytes[index]
-            result |= UInt64(byte & 0x7F) << shift
-
-            if byte & 0x80 == 0 {
-                return (result, index + 1)
-            }
-
-            shift += 7
-            index += 1
-        }
-
-        return nil
+        guard let (ime, field) = RemoteImeProtobuf.imeCounters(from: data) else { return }
+        imeCounter = ime
+        imeFieldCounter = field
+        #if DEBUG
+        print("[AndroidTVAdapter] 📥 Received IME counters - ime: \(ime), field: \(field)")
+        #endif
     }
 
     private func formatError(_ error: AndroidTVRemoteControlError) -> String {

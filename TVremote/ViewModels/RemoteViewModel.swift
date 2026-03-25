@@ -20,7 +20,7 @@ final class RemoteViewModel: ObservableObject {
 
     // MARK: - Services
 
-    private let adapter: AndroidTVAdapter
+    private let adapter: any TVRemoteAdapterProtocol
     private let feedbackGenerator = UIImpactFeedbackGenerator(style: .medium)
     private let lightFeedback = UIImpactFeedbackGenerator(style: .light)
 
@@ -31,7 +31,7 @@ final class RemoteViewModel: ObservableObject {
 
     // MARK: - Initialization
 
-    init(adapter: AndroidTVAdapter) {
+    init(adapter: any TVRemoteAdapterProtocol) {
         self.adapter = adapter
         feedbackGenerator.prepare()
         lightFeedback.prepare()

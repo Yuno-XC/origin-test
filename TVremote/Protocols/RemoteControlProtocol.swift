@@ -12,6 +12,7 @@ import Combine
 protocol TVConnectionProtocol: AnyObject {
     var connectionState: AnyPublisher<ConnectionState, Never> { get }
     var currentState: ConnectionState { get }
+    var currentDevice: TVDevice? { get }
 
     func connect(to device: TVDevice) async throws
     func disconnect()
@@ -36,6 +37,12 @@ protocol DeviceDiscoveryProtocol: AnyObject {
     func startScanning()
     func stopScanning()
     func manualConnect(host: String, port: Int) async throws -> TVDevice
+}
+
+extension DeviceDiscoveryProtocol {
+    func manualConnect(host: String) async throws -> TVDevice {
+        try await manualConnect(host: host, port: 6466)
+    }
 }
 
 /// Protocol for persistence

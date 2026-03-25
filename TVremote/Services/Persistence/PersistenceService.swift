@@ -20,7 +20,7 @@ final class PersistenceService: PersistenceProtocol {
 
     // MARK: - Properties
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -31,7 +31,9 @@ final class PersistenceService: PersistenceProtocol {
 
     static let shared = PersistenceService()
 
-    private init() {}
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
 
     // MARK: - Device Persistence
 
