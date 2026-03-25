@@ -36,6 +36,28 @@ final class TVDeviceTests: XCTestCase {
         XCTAssertEqual(decoded, original)
     }
 
+    /// `TVDevice.==` compares only host and port; persistence still must round-trip id, name, and dates.
+    func testCodable_roundTrip_preservesIdNameAndLastConnected() throws {
+        let id = UUID()
+        let lastConnected = Date(timeIntervalSince1970: 1_750_000_000)
+        let original = TVDevice(
+            id: id,
+            name: "Office TV",
+            host: "10.0.0.50",
+            port: 6466,
+            isPaired: true,
+            lastConnected: lastConnected
+        )
+        let decoded = try JSONDecoder().decode(
+            TVDevice.self,
+            from: try JSONEncoder().encode(original)
+        )
+        XCTAssertEqual(decoded.id, id)
+        XCTAssertEqual(decoded.name, "Office TV")
+        XCTAssertEqual(decoded.lastConnected, lastConnected)
+        XCTAssertTrue(decoded.isPaired)
+    }
+
     func testDefaultPort() {
         let d = TVDevice(name: "TV", host: "1.1.1.1")
         XCTAssertEqual(d.port, 6466)
