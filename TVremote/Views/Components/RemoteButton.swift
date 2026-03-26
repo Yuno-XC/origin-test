@@ -9,7 +9,7 @@ import SwiftUI
 import UIKit
 
 @MainActor
-private enum SharedHaptics {
+enum SharedHaptics {
     static let medium = UIImpactFeedbackGenerator(style: .medium)
     static let light = UIImpactFeedbackGenerator(style: .light)
 

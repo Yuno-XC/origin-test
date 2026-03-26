@@ -88,6 +88,10 @@ final class MockTVRemoteAdapter: TVRemoteAdapterProtocol {
     func pushConnectionState(_ state: ConnectionState) {
         stateSubject.send(state)
     }
+
+    func resetSentDirections() {
+        sentWithDirection.removeAll()
+    }
 }
 
 // MARK: - Mock persistence

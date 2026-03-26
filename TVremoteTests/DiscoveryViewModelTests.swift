@@ -3,6 +3,7 @@
 //  TVremoteTests
 //
 
+import Combine
 import XCTest
 @testable import TVremote
 
@@ -102,6 +103,35 @@ final class DiscoveryViewModelTests: XCTestCase {
         XCTAssertTrue(persistence.loadDevices().contains { $0.host == "192.168.0.5" })
     }
 
+    func testConnectManually_success_clearsManualIPField() async throws {
+        let discovery = MockDiscoveryService()
+        discovery.manualConnectResult = .success(TVDevice(name: "TV", host: "10.0.0.74"))
+        let vm = DiscoveryViewModel(discoveryService: discovery, persistence: MockPersistence())
+
+        vm.manualIP = "10.0.0.74"
+        vm.connectManually()
+        try await Task.sleep(for: .milliseconds(300))
+
+        XCTAssertEqual(vm.manualIP, "")
+        XCTAssertNil(vm.manualIPError)
+    }
+
+    func testConnectManually_success_refreshesSavedAndMergedDeviceLists() async throws {
+        let discovery = MockDiscoveryService()
+        let persistence = MockPersistence()
+        let returned = TVDevice(name: "Manual TV", host: "10.0.0.82")
+        discovery.manualConnectResult = .success(returned)
+        let vm = DiscoveryViewModel(discoveryService: discovery, persistence: persistence)
+
+        vm.manualIP = returned.host
+        vm.connectManually()
+        try await Task.sleep(for: .milliseconds(300))
+
+        XCTAssertEqual(vm.savedDevices.map(\.host), [returned.host])
+        XCTAssertEqual(vm.allDevices.map(\.host), [returned.host])
+        XCTAssertTrue(vm.newlyDiscoveredDevices.isEmpty)
+    }
+
     func testConnectManually_skipPairing_marksPaired() async throws {
         let discovery = MockDiscoveryService()
         let persistence = MockPersistence()
@@ -175,6 +205,36 @@ final class DiscoveryViewModelTests: XCTestCase {
         XCTAssertTrue(vm.showManualEntry)
     }
 
+    func testConnectManually_failure_keepsManualIPAndDoesNotPersistDevice() async throws {
+        let discovery = MockDiscoveryService()
+        let persistence = MockPersistence()
+        discovery.manualConnectResult = .failure(DiscoveryError.invalidAddress)
+        let vm = DiscoveryViewModel(discoveryService: discovery, persistence: persistence)
+
+        vm.manualIP = "10.0.0.75"
+        vm.connectManually()
+        try await Task.sleep(for: .milliseconds(300))
+
+        XCTAssertEqual(vm.manualIP, "10.0.0.75")
+        XCTAssertTrue(persistence.loadDevices().isEmpty)
+    }
+
+    func testConnectManually_failure_keepsExistingSavedAndMergedDeviceLists() async throws {
+        let discovery = MockDiscoveryService()
+        let persistence = MockPersistence()
+        let saved = TVDevice(name: "Saved", host: "10.0.0.83")
+        persistence.saveDevice(saved)
+        discovery.manualConnectResult = .failure(DiscoveryError.invalidAddress)
+        let vm = DiscoveryViewModel(discoveryService: discovery, persistence: persistence)
+
+        vm.manualIP = "10.0.0.84"
+        vm.connectManually()
+        try await Task.sleep(for: .milliseconds(300))
+
+        XCTAssertEqual(vm.savedDevices.map(\.host), [saved.host])
+        XCTAssertEqual(vm.allDevices.map(\.host), [saved.host])
+    }
+
     func testSelectDevice_invokesOnDeviceSelected() {
         let vm = DiscoveryViewModel(discoveryService: MockDiscoveryService(), persistence: MockPersistence())
         let picked = TVDevice(name: "Pick", host: "10.0.0.70")
@@ -197,5 +257,23 @@ final class DiscoveryViewModelTests: XCTestCase {
         ])
         let match = vm.allDevices.first { $0.host == "10.0.0.71" }
         XCTAssertEqual(match?.name, "Saved Name")
+    }
+
+    func testRemoveDevice_revealsMatchingDiscoveredDeviceAfterSavedEntryIsDeleted() {
+        let discovery = MockDiscoveryService()
+        let persistence = MockPersistence()
+        let saved = TVDevice(name: "Saved", host: "10.0.0.76")
+        let discovered = TVDevice(name: "Discovered", host: "10.0.0.76")
+        persistence.saveDevice(saved)
+        let vm = DiscoveryViewModel(discoveryService: discovery, persistence: persistence)
+
+        discovery.devicesSubject.send([discovered])
+        XCTAssertEqual(vm.allDevices.first?.name, "Saved")
+
+        vm.removeDevice(saved)
+
+        XCTAssertEqual(vm.savedDevices.count, 0)
+        XCTAssertEqual(vm.newlyDiscoveredDevices.map(\.host), ["10.0.0.76"])
+        XCTAssertEqual(vm.allDevices.map(\.name), ["Discovered"])
     }
 }

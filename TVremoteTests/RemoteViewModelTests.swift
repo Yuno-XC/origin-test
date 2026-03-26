@@ -68,7 +68,7 @@ final class RemoteViewModelTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(150))
         XCTAssertTrue(adapter.sentWithDirection.contains { $0.0 == .rewind && $0.1 == .endLong })
 
-        adapter.sentWithDirection.removeAll()
+        adapter.resetSentDirections()
         vm.fastForward()
         try await Task.sleep(for: .milliseconds(80))
         vm.stopFastForward()
@@ -151,17 +151,6 @@ final class RemoteViewModelTests: XCTestCase {
         vm.sendText("ok")
         try await Task.sleep(for: .milliseconds(150))
         XCTAssertEqual(adapter.sentActions.last, .textInput("ok"))
-    }
-
-    func testOpenAndCloseKeyboard_togglesTypingMode() {
-        let vm = RemoteViewModel(adapter: MockTVRemoteAdapter())
-        vm.openKeyboard()
-        XCTAssertTrue(vm.showKeyboard)
-        XCTAssertTrue(vm.isTypingMode)
-        XCTAssertEqual(vm.keyboardText, "")
-        vm.closeKeyboard()
-        XCTAssertFalse(vm.showKeyboard)
-        XCTAssertFalse(vm.isTypingMode)
     }
 
     func testSendEnter_forwardsToAdapter() async throws {

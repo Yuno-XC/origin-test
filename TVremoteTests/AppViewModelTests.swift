@@ -78,6 +78,16 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertEqual(persistence.getLastConnectedDevice()?.host, "10.0.0.50")
     }
 
+    func testConnect_pairedSuccess_setsConnectedDevice() async {
+        let adapter = MockTVRemoteAdapter()
+        let vm = AppViewModel(adapter: adapter, persistence: MockPersistence())
+        let device = TVDevice(name: "TV", host: "10.0.0.80", isPaired: true)
+
+        await vm.connect(to: device)
+
+        XCTAssertEqual(vm.connectedDevice?.host, device.host)
+    }
+
     func testConnect_unpaired_showsPairing() async {
         let adapter = MockTVRemoteAdapter()
         let persistence = MockPersistence()
@@ -107,6 +117,21 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertEqual(e, .deviceUnreachable)
     }
 
+    func testConnect_failure_doesNotPersistLastConnectedOrNavigateToRemote() async {
+        struct Err: Error {}
+        let adapter = MockTVRemoteAdapter()
+        adapter.connectBehavior = .failure(Err())
+        let persistence = MockPersistence()
+        let vm = AppViewModel(adapter: adapter, persistence: persistence)
+        let device = TVDevice(name: "TV", host: "10.0.0.77", isPaired: true)
+
+        await vm.connect(to: device)
+
+        XCTAssertNil(persistence.getLastConnectedDevice())
+        XCTAssertNil(vm.connectedDevice)
+        XCTAssertEqual(vm.navigationState, .discovery)
+    }
+
     func testDisconnect_clearsNavigationToDiscovery() async {
         let adapter = MockTVRemoteAdapter()
         let persistence = MockPersistence()
@@ -116,6 +141,20 @@ final class AppViewModelTests: XCTestCase {
         vm.disconnect()
         XCTAssertEqual(vm.navigationState, .discovery)
         XCTAssertGreaterThanOrEqual(adapter.disconnectCount, 1)
+    }
+
+    func testDisconnect_clearsConnectedDevice() async {
+        let adapter = MockTVRemoteAdapter()
+        let persistence = MockPersistence()
+        let vm = AppViewModel(adapter: adapter, persistence: persistence)
+        let device = TVDevice(name: "TV", host: "10.0.0.78", isPaired: true)
+
+        await vm.connect(to: device)
+        XCTAssertEqual(vm.connectedDevice?.host, device.host)
+
+        vm.disconnect()
+
+        XCTAssertNil(vm.connectedDevice)
     }
 
     func testSend_forwardsToAdapter() async {
@@ -198,6 +237,36 @@ final class AppViewModelTests: XCTestCase {
         }
     }
 
+    func testSubmitPairingCode_failure_doesNotPersistPairedDevice() async {
+        struct PairErr: Error {}
+        let adapter = MockTVRemoteAdapter()
+        adapter.pairingCodeBehavior = .failure(PairErr())
+        let persistence = MockPersistence()
+        let vm = AppViewModel(adapter: adapter, persistence: persistence)
+        let device = TVDevice(name: "TV", host: "10.0.0.81", isPaired: false)
+
+        vm.showPairing(for: device)
+        await vm.submitPairingCode("0000")
+
+        XCTAssertNil(persistence.loadDevices().first { $0.host == device.host })
+    }
+
+    func testSubmitPairingCode_connectFailure_stillPersistsPairedDevice() async {
+        struct ConnectErr: Error {}
+        let adapter = MockTVRemoteAdapter()
+        adapter.connectBehavior = .failure(ConnectErr())
+        let persistence = MockPersistence()
+        let vm = AppViewModel(adapter: adapter, persistence: persistence)
+        let device = TVDevice(name: "TV", host: "10.0.0.79", isPaired: false)
+
+        vm.showPairing(for: device)
+        await vm.submitPairingCode("1234")
+
+        XCTAssertEqual(adapter.submitCodeCalls, ["1234"])
+        XCTAssertTrue(persistence.loadDevices().first { $0.host == device.host }?.isPaired == true)
+        XCTAssertEqual(vm.connectionState, .error(.deviceUnreachable))
+    }
+
     func testStartPairing_failure_setsPairingFailedError() async {
         struct StartErr: Error {}
         let adapter = MockTVRemoteAdapter()
@@ -240,6 +309,16 @@ final class AppViewModelTests: XCTestCase {
 
         XCTAssertEqual(adapter.connectCalls.count, 2)
         XCTAssertEqual(adapter.connectCalls.last?.host, device.host)
+    }
+
+    func testConnectionLost_withoutConnectedDevice_doesNotReconnect() async throws {
+        let adapter = MockTVRemoteAdapter()
+        let vm = AppViewModel(adapter: adapter, persistence: MockPersistence())
+
+        adapter.pushConnectionState(.error(.connectionLost))
+        try await Task.sleep(for: .milliseconds(2300))
+
+        XCTAssertTrue(adapter.connectCalls.isEmpty)
     }
 
     func testSkipPairingAndConnect_invokesConnect() async throws {

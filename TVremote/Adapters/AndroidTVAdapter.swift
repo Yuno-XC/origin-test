@@ -306,6 +306,23 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
         }
     }
 
+    private func resolveRemoteHandshakeWait(with result: Swift.Result<Void, Error>) {
+        remoteWaitLock.lock()
+        let continuation = remoteWaitContinuation
+        remoteWaitContinuation = nil
+        activeRemoteWaitToken = nil
+        remoteWaitLock.unlock()
+
+        guard let continuation else { return }
+
+        switch result {
+        case .success:
+            continuation.resume()
+        case .failure(let error):
+            continuation.resume(throwing: error)
+        }
+    }
+
     private func connectToRemote() async throws {
         guard let remoteManager = remoteManager,
               let device = currentDevice else {
