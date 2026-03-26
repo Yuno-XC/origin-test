@@ -31,6 +31,9 @@ final class AppViewModel: ObservableObject {
     let adapter: any TVRemoteAdapterProtocol
     private let persistence: PersistenceProtocol
     private var cancellables = Set<AnyCancellable>()
+    private var reconnectTask: Task<Void, Never>?
+    private var reconnectAttempt = 0
+    private let maxReconnectAttempts = 3
 
     // MARK: - Initialization
 
@@ -108,6 +111,7 @@ final class AppViewModel: ObservableObject {
     }
 
     func disconnect() {
+        cancelReconnect()
         adapter.disconnect()
         connectedDevice = nil
         navigationState = .discovery
@@ -159,6 +163,7 @@ final class AppViewModel: ObservableObject {
     }
 
     func cancelPairing() {
+        cancelReconnect()
         adapter.disconnect()
         navigationState = .discovery
     }
@@ -169,6 +174,7 @@ final class AppViewModel: ObservableObject {
         pairedDevice.isPaired = true
         persistence.saveDevice(pairedDevice)
 
+        cancelReconnect()
         adapter.disconnect()
 
         Task {
@@ -199,6 +205,7 @@ final class AppViewModel: ObservableObject {
     private func handleConnectionStateChange(_ state: ConnectionState) {
         switch state {
         case .connected:
+            cancelReconnect()
             if let device = adapter.currentDevice {
                 connectedDevice = device
             }
@@ -211,18 +218,65 @@ final class AppViewModel: ObservableObject {
 
         case .error(let error):
             if case .connectionLost = error {
-                // Try silent reconnect
-                if let device = connectedDevice {
-                    Task {
-                        try? await Task.sleep(nanoseconds: 2_000_000_000)
-                        await connect(to: device)
-                    }
-                }
+                scheduleReconnectIfNeeded()
             }
 
         default:
             break
         }
+    }
+
+    private func scheduleReconnectIfNeeded() {
+        guard reconnectTask == nil else {
+            #if DEBUG
+            print("[AppViewModel] Reconnect already scheduled; skipping duplicate request")
+            #endif
+            return
+        }
+
+        guard let device = connectedDevice else {
+            #if DEBUG
+            print("[AppViewModel] No connected device available for reconnect")
+            #endif
+            return
+        }
+
+        reconnectTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.reconnectTask = nil }
+
+            while !Task.isCancelled && self.reconnectAttempt < self.maxReconnectAttempts {
+                self.reconnectAttempt += 1
+                let delaySeconds = UInt64(self.reconnectAttempt * 2)
+
+                #if DEBUG
+                print("[AppViewModel] Attempting reconnect #\(self.reconnectAttempt) in \(delaySeconds)s")
+                #endif
+
+                do {
+                    try await Task.sleep(nanoseconds: delaySeconds * 1_000_000_000)
+                } catch {
+                    return
+                }
+
+                if Task.isCancelled {
+                    return
+                }
+
+                await self.connect(to: device)
+
+                if case .connected = self.connectionState {
+                    self.reconnectAttempt = 0
+                    return
+                }
+            }
+        }
+    }
+
+    private func cancelReconnect() {
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        reconnectAttempt = 0
     }
 }
 

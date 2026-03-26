@@ -321,6 +321,25 @@ final class AppViewModelTests: XCTestCase {
         XCTAssertTrue(adapter.connectCalls.isEmpty)
     }
 
+    func testConnectionLost_multipleEvents_scheduleSingleReconnectAttempt() async throws {
+        let adapter = MockTVRemoteAdapter()
+        let persistence = MockPersistence()
+        let vm = AppViewModel(adapter: adapter, persistence: persistence)
+        let device = TVDevice(name: "Living Room", host: "10.0.0.63", isPaired: true)
+
+        await vm.connect(to: device)
+        XCTAssertEqual(adapter.connectCalls.count, 1)
+
+        adapter.pushConnectionState(.error(.connectionLost))
+        adapter.pushConnectionState(.error(.connectionLost))
+        adapter.pushConnectionState(.error(.connectionLost))
+
+        try await Task.sleep(for: .milliseconds(2300))
+
+        XCTAssertEqual(adapter.connectCalls.count, 2)
+        XCTAssertEqual(adapter.connectCalls.last?.host, device.host)
+    }
+
     func testSkipPairingAndConnect_invokesConnect() async throws {
         let adapter = MockTVRemoteAdapter()
         let persistence = MockPersistence()
