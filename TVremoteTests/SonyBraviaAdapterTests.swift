@@ -119,6 +119,9 @@ final class SonyBraviaAdapterTests: XCTestCase {
         (.volumeUp, "AAAAAQAAAAEAAABRAw=="),
         (.volumeDown, "AAAAAQAAAAEAAABSAw=="),
         (.mute, "AAAAAQAAAAEAAAAUAw=="),
+        (.channelDigit(0), "AAAAAQAAAAEAAAAJAw=="),
+        (.channelDigit(1), "AAAAAQAAAAEAAAAAAw=="),
+        (.channelDigit(9), "AAAAAQAAAAEAAAAIAw=="),
         (.power, "AAAAAQAAAAEAAAAVAw=="),
     ]
 

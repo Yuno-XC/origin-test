@@ -9,6 +9,14 @@ import Foundation
 import Combine
 import SwiftUI
 
+enum DiscoveryFilter: String, CaseIterable, Identifiable {
+    case all = "All"
+    case saved = "Saved"
+    case newlyDiscovered = "New"
+
+    var id: String { rawValue }
+}
+
 @MainActor
 final class DiscoveryViewModel: ObservableObject {
     // MARK: - Published Properties
@@ -18,6 +26,8 @@ final class DiscoveryViewModel: ObservableObject {
     @Published private(set) var allDevices: [TVDevice] = []
     @Published private(set) var newlyDiscoveredDevices: [TVDevice] = []
     @Published private(set) var isScanning = false
+    @Published var searchQuery = ""
+    @Published var selectedFilter: DiscoveryFilter = .all
     @Published var showManualEntry = false
     @Published var manualIP = ""
     @Published var manualIPError: String?
@@ -147,5 +157,30 @@ final class DiscoveryViewModel: ObservableObject {
 
     var hasDevices: Bool {
         !allDevices.isEmpty
+    }
+
+    var filteredSavedDevices: [TVDevice] {
+        guard selectedFilter != .newlyDiscovered else { return [] }
+        return filter(devices: savedDevices)
+    }
+
+    var filteredNewlyDiscoveredDevices: [TVDevice] {
+        guard selectedFilter != .saved else { return [] }
+        return filter(devices: newlyDiscoveredDevices)
+    }
+
+    var hasVisibleDevices: Bool {
+        !filteredSavedDevices.isEmpty || !filteredNewlyDiscoveredDevices.isEmpty
+    }
+
+    private func filter(devices: [TVDevice]) -> [TVDevice] {
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return devices }
+
+        let loweredQuery = query.lowercased()
+        return devices.filter {
+            $0.name.lowercased().contains(loweredQuery)
+                || $0.host.lowercased().contains(loweredQuery)
+        }
     }
 }

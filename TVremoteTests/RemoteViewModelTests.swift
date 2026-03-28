@@ -97,6 +97,7 @@ final class RemoteViewModelTests: XCTestCase {
         vm.volumeUp()
         vm.volumeDown()
         vm.mute()
+        vm.channelDigit(7)
         vm.power()
         try await Task.sleep(for: .milliseconds(400))
         let actions = adapter.sentActions
@@ -106,7 +107,21 @@ final class RemoteViewModelTests: XCTestCase {
         XCTAssertTrue(actions.contains(.volumeUp))
         XCTAssertTrue(actions.contains(.volumeDown))
         XCTAssertTrue(actions.contains(.mute))
+        XCTAssertTrue(actions.contains(.channelDigit(7)))
         XCTAssertTrue(actions.contains(.power))
+    }
+
+    func testChannelDigit_invalidValue_doesNotSend() async throws {
+        let adapter = MockTVRemoteAdapter()
+        let vm = RemoteViewModel(adapter: adapter)
+        vm.channelDigit(12)
+        try await Task.sleep(for: .milliseconds(80))
+        XCTAssertFalse(adapter.sentActions.contains { action in
+            if case .channelDigit = action {
+                return true
+            }
+            return false
+        })
     }
 
     func testStartLongPress_nonLongPressAction_sendsShortPress() async throws {

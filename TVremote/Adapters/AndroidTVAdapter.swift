@@ -787,6 +787,13 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
             #if DEBUG
             print("[AndroidTVAdapter] 🗺️ Mapping mute -> KEYCODE_MUTE (91)")
             #endif
+
+        // Channel
+        case .channelDigit(let digit):
+            key = mapChannelDigitToKey(digit)
+            #if DEBUG
+            print("[AndroidTVAdapter] 🗺️ Mapping channelDigit(\(digit)) -> \(String(describing: key))")
+            #endif
         
         // Power
         case .power: 
@@ -813,6 +820,22 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
             return .START_LONG
         case .endLong:
             return .END_LONG
+        }
+    }
+
+    private func mapChannelDigitToKey(_ digit: Int) -> Key? {
+        switch digit {
+        case 0: return .KEYCODE_0
+        case 1: return .KEYCODE_1
+        case 2: return .KEYCODE_2
+        case 3: return .KEYCODE_3
+        case 4: return .KEYCODE_4
+        case 5: return .KEYCODE_5
+        case 6: return .KEYCODE_6
+        case 7: return .KEYCODE_7
+        case 8: return .KEYCODE_8
+        case 9: return .KEYCODE_9
+        default: return nil
         }
     }
 

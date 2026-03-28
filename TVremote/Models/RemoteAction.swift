@@ -37,6 +37,9 @@ enum RemoteAction: Equatable {
     case volumeDown
     case mute
 
+    // Channel
+    case channelDigit(Int)
+
     // Power
     case power
 

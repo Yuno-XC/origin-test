@@ -154,4 +154,41 @@ final class PersistenceServiceTests: XCTestCase {
         let loaded = sut.loadDevices().sorted { $0.port < $1.port }
         XCTAssertEqual(loaded.map(\.port), [80, 6466])
     }
+
+    func testRememberRecentText_persistsMostRecentFirst() {
+        sut.rememberRecentText("Netflix")
+        sut.rememberRecentText("YouTube")
+
+        XCTAssertEqual(sut.loadRecentTexts(), ["YouTube", "Netflix"])
+    }
+
+    func testRememberRecentText_deduplicatesExistingEntry() {
+        sut.rememberRecentText("Disney+")
+        sut.rememberRecentText("YouTube")
+        sut.rememberRecentText("Disney+")
+
+        XCTAssertEqual(sut.loadRecentTexts(), ["Disney+", "YouTube"])
+    }
+
+    func testRememberRecentText_ignoresWhitespaceOnlyValues() {
+        sut.rememberRecentText("   ")
+
+        XCTAssertTrue(sut.loadRecentTexts().isEmpty)
+    }
+
+    func testRememberRecentText_enforcesLimit() {
+        for index in 0..<10 {
+            sut.rememberRecentText("Text \(index)", limit: 4)
+        }
+
+        XCTAssertEqual(sut.loadRecentTexts(), ["Text 9", "Text 8", "Text 7", "Text 6"])
+    }
+
+    func testClearRecentTexts_removesSavedHistory() {
+        sut.rememberRecentText("Search")
+
+        sut.clearRecentTexts()
+
+        XCTAssertTrue(sut.loadRecentTexts().isEmpty)
+    }
 }

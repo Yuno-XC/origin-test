@@ -122,6 +122,7 @@ struct FullScreenKeyboardView: View {
     let onSendText: (String) -> Void  // New callback for sending full text
 
     @State private var text = ""
+    @State private var recentTexts = PersistenceService.shared.loadRecentTexts()
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -160,6 +161,10 @@ struct FullScreenKeyboardView: View {
                     )
                     .padding(.horizontal)
 
+                if !recentTexts.isEmpty {
+                    recentTextsSection
+                }
+
                 // Hidden text field for keyboard
                 TextField("", text: $text)
                     .focused($isFocused)
@@ -171,12 +176,7 @@ struct FullScreenKeyboardView: View {
                         handleTextChange(old: oldValue, new: newValue)
                     }
                     .onSubmit {
-                        // Send the full text when Enter is pressed
-                        if !text.isEmpty {
-                            // Send entire text as one message
-                            onSendText(text)
-                            text = ""
-                        }
+                        submitCurrentText()
                         onEnter()
                     }
 
@@ -199,12 +199,7 @@ struct FullScreenKeyboardView: View {
                     }
 
                     Button(action: {
-                        // Send the full text when Done is clicked
-                        if !text.isEmpty {
-                            // Send entire text as one message
-                            onSendText(text)
-                            text = ""
-                        }
+                        submitCurrentText()
                         isPresented = false
                     }) {
                         Text("Done")
@@ -225,6 +220,60 @@ struct FullScreenKeyboardView: View {
                 isFocused = true
             }
         }
+    }
+
+    private var recentTextsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Recent")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+
+                Spacer()
+
+                Button("Clear") {
+                    PersistenceService.shared.clearRecentTexts()
+                    recentTexts.removeAll()
+                }
+                .font(.caption)
+                .foregroundStyle(.blue)
+            }
+            .padding(.horizontal)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(recentTexts, id: \.self) { recentText in
+                        Button {
+                            text = recentText
+                            isFocused = true
+                        } label: {
+                            Text(recentText)
+                                .font(.subheadline)
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(
+                                    Capsule()
+                                        .fill(Color(.systemGray5))
+                                )
+                        }
+                        .accessibilityLabel("Use recent text \(recentText)")
+                    }
+                }
+                .padding(.horizontal)
+            }
+        }
+    }
+
+    private func submitCurrentText() {
+        guard !text.isEmpty else { return }
+
+        let submittedText = text
+        onSendText(submittedText)
+        recentTexts = PersistenceService.shared.rememberRecentText(submittedText)
+        text = ""
     }
 
     private func handleTextChange(old: String, new: String) {

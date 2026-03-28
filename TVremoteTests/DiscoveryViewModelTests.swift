@@ -81,6 +81,98 @@ final class DiscoveryViewModelTests: XCTestCase {
         XCTAssertFalse(vm.hasDevices)
     }
 
+    func testSearchQuery_filtersSavedAndDiscoveredDevicesByName() {
+        let discovery = MockDiscoveryService()
+        let persistence = MockPersistence()
+        persistence.saveDevice(TVDevice(name: "Living Room", host: "10.0.0.1"))
+        let vm = DiscoveryViewModel(discoveryService: discovery, persistence: persistence)
+        discovery.devicesSubject.send([
+            TVDevice(name: "Bedroom TV", host: "10.0.0.2"),
+            TVDevice(name: "Office Display", host: "10.0.0.3")
+        ])
+
+        vm.searchQuery = "bed"
+
+        XCTAssertEqual(vm.filteredSavedDevices.count, 0)
+        XCTAssertEqual(vm.filteredNewlyDiscoveredDevices.map(\.name), ["Bedroom TV"])
+        XCTAssertTrue(vm.hasVisibleDevices)
+    }
+
+    func testSearchQuery_filtersByHost_andIsCaseInsensitive() {
+        let discovery = MockDiscoveryService()
+        let persistence = MockPersistence()
+        persistence.saveDevice(TVDevice(name: "Main TV", host: "192.168.1.12"))
+        let vm = DiscoveryViewModel(discoveryService: discovery, persistence: persistence)
+        discovery.devicesSubject.send([
+            TVDevice(name: "Guest TV", host: "10.0.0.20")
+        ])
+
+        vm.searchQuery = "192.168.1"
+        XCTAssertEqual(vm.filteredSavedDevices.map(\.host), ["192.168.1.12"])
+        XCTAssertTrue(vm.filteredNewlyDiscoveredDevices.isEmpty)
+
+        vm.searchQuery = "MAIN"
+        XCTAssertEqual(vm.filteredSavedDevices.map(\.name), ["Main TV"])
+    }
+
+    func testSearchQuery_withNoMatches_setsHasVisibleDevicesFalse() {
+        let discovery = MockDiscoveryService()
+        let persistence = MockPersistence()
+        persistence.saveDevice(TVDevice(name: "Kitchen TV", host: "10.0.0.5"))
+        let vm = DiscoveryViewModel(discoveryService: discovery, persistence: persistence)
+        discovery.devicesSubject.send([
+            TVDevice(name: "Patio TV", host: "10.0.0.6")
+        ])
+
+        vm.searchQuery = "zzz"
+
+        XCTAssertTrue(vm.filteredSavedDevices.isEmpty)
+        XCTAssertTrue(vm.filteredNewlyDiscoveredDevices.isEmpty)
+        XCTAssertFalse(vm.hasVisibleDevices)
+    }
+
+    func testSelectedFilter_saved_hidesNewlyDiscoveredDevices() {
+        let discovery = MockDiscoveryService()
+        let persistence = MockPersistence()
+        persistence.saveDevice(TVDevice(name: "Saved TV", host: "10.0.0.10"))
+        let vm = DiscoveryViewModel(discoveryService: discovery, persistence: persistence)
+        discovery.devicesSubject.send([TVDevice(name: "New TV", host: "10.0.0.11")])
+
+        vm.selectedFilter = .saved
+
+        XCTAssertEqual(vm.filteredSavedDevices.map(\.host), ["10.0.0.10"])
+        XCTAssertTrue(vm.filteredNewlyDiscoveredDevices.isEmpty)
+        XCTAssertTrue(vm.hasVisibleDevices)
+    }
+
+    func testSelectedFilter_newlyDiscovered_hidesSavedDevices() {
+        let discovery = MockDiscoveryService()
+        let persistence = MockPersistence()
+        persistence.saveDevice(TVDevice(name: "Saved TV", host: "10.0.0.20"))
+        let vm = DiscoveryViewModel(discoveryService: discovery, persistence: persistence)
+        discovery.devicesSubject.send([TVDevice(name: "New TV", host: "10.0.0.21")])
+
+        vm.selectedFilter = .newlyDiscovered
+
+        XCTAssertTrue(vm.filteredSavedDevices.isEmpty)
+        XCTAssertEqual(vm.filteredNewlyDiscoveredDevices.map(\.host), ["10.0.0.21"])
+        XCTAssertTrue(vm.hasVisibleDevices)
+    }
+
+    func testSelectedFilter_all_showsBothGroups() {
+        let discovery = MockDiscoveryService()
+        let persistence = MockPersistence()
+        persistence.saveDevice(TVDevice(name: "Saved TV", host: "10.0.0.30"))
+        let vm = DiscoveryViewModel(discoveryService: discovery, persistence: persistence)
+        discovery.devicesSubject.send([TVDevice(name: "New TV", host: "10.0.0.31")])
+
+        vm.selectedFilter = .all
+
+        XCTAssertEqual(vm.filteredSavedDevices.map(\.host), ["10.0.0.30"])
+        XCTAssertEqual(vm.filteredNewlyDiscoveredDevices.map(\.host), ["10.0.0.31"])
+        XCTAssertTrue(vm.hasVisibleDevices)
+    }
+
     func testConnectManually_emptyShowsError() {
         let vm = DiscoveryViewModel(discoveryService: MockDiscoveryService(), persistence: MockPersistence())
         vm.manualIP = "   "

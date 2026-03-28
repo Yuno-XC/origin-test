@@ -29,18 +29,23 @@ struct DiscoveryView: View {
                                 scanningView
                             }
 
+                            // Filter controls
+                            if viewModel.hasDevices {
+                                filterPicker
+                            }
+
                             // Saved devices
-                            if !viewModel.savedDevices.isEmpty {
+                            if !viewModel.filteredSavedDevices.isEmpty {
                                 savedDevicesSection
                             }
 
                             // Discovered devices
-                            if !viewModel.newlyDiscoveredDevices.isEmpty {
+                            if !viewModel.filteredNewlyDiscoveredDevices.isEmpty {
                                 discoveredDevicesSection
                             }
 
                             // Empty state
-                            if !viewModel.hasDevices && !viewModel.isScanning {
+                            if !viewModel.hasVisibleDevices && !viewModel.isScanning {
                                 emptyStateView
                             }
 
@@ -52,6 +57,11 @@ struct DiscoveryView: View {
                 }
             }
             .navigationBarHidden(true)
+            .searchable(
+                text: $viewModel.searchQuery,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Search TVs by name or IP"
+            )
             .task {
                 viewModel.startScanning()
                 viewModel.onDeviceSelected = { device in
@@ -118,6 +128,16 @@ struct DiscoveryView: View {
 
     // MARK: - Saved Devices Section
 
+    private var filterPicker: some View {
+        Picker("Device Filter", selection: $viewModel.selectedFilter) {
+            ForEach(DiscoveryFilter.allCases) { filter in
+                Text(filter.rawValue).tag(filter)
+            }
+        }
+        .pickerStyle(.segmented)
+        .accessibilityLabel("Device list filter")
+    }
+
     private var savedDevicesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("SAVED TVs")
@@ -125,7 +145,7 @@ struct DiscoveryView: View {
                 .fontWeight(.semibold)
                 .foregroundColor(Color(.systemGray))
 
-            ForEach(viewModel.savedDevices) { device in
+            ForEach(viewModel.filteredSavedDevices) { device in
                 DeviceRow(
                     device: device,
                     isSaved: true,
@@ -149,7 +169,7 @@ struct DiscoveryView: View {
                 .fontWeight(.semibold)
                 .foregroundColor(Color(.systemGray))
 
-            ForEach(viewModel.newlyDiscoveredDevices) { device in
+            ForEach(viewModel.filteredNewlyDiscoveredDevices) { device in
                 DeviceRow(
                     device: device,
                     isSaved: false,
@@ -164,38 +184,48 @@ struct DiscoveryView: View {
 
     // MARK: - Empty State
 
+    private var isFilteringDiscoveryResults: Bool {
+        !viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private var emptyStateView: some View {
         VStack(spacing: 16) {
             Image(systemName: "wifi.exclamationmark")
                 .font(.system(size: 48))
                 .foregroundColor(Color(.systemGray3))
 
-            Text("No TVs Found")
+            Text(isFilteringDiscoveryResults ? "No Matching TVs" : "No TVs Found")
                 .font(.title3)
                 .fontWeight(.semibold)
                 .foregroundColor(.white)
 
-            Text("Make sure your Android TV is on\nand connected to the same Wi-Fi network")
+            Text(
+                isFilteringDiscoveryResults
+                    ? "Try searching by another TV name or IP address"
+                    : "Make sure your Android TV is on\nand connected to the same Wi-Fi network"
+            )
                 .font(.subheadline)
                 .foregroundColor(Color(.systemGray))
                 .multilineTextAlignment(.center)
 
-            Button(action: {
-                viewModel.startScanning()
-            }) {
-                HStack {
-                    Image(systemName: "arrow.clockwise")
-                    Text("Scan Again")
+            if !isFilteringDiscoveryResults {
+                Button(action: {
+                    viewModel.startScanning()
+                }) {
+                    HStack {
+                        Image(systemName: "arrow.clockwise")
+                        Text("Scan Again")
+                    }
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .background(Color.blue)
+                    .clipShape(Capsule())
                 }
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundColor(.white)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
-                .background(Color.blue)
-                .clipShape(Capsule())
+                .padding(.top, 8)
             }
-            .padding(.top, 8)
         }
         .padding(.vertical, 40)
     }

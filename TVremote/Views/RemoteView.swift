@@ -12,6 +12,7 @@ struct RemoteView: View {
     @State private var viewModel: RemoteViewModel
 
     @State private var showKeyboard = false
+    @State private var showChannelPad = false
     @State private var showSettings = false
 
     init(device: TVDevice, adapter: any TVRemoteAdapterProtocol) {
@@ -50,7 +51,7 @@ struct RemoteView: View {
                             dPadSection
 
                             // System buttons
-                            systemButtons
+                            systemButtons(availableWidth: geo.size.width - (sideRailWidth * 2))
 
                             // Media controls
                             mediaControls
@@ -86,6 +87,16 @@ struct RemoteView: View {
                         }
                     )
                     .transition(.opacity)
+                }
+
+                if showChannelPad {
+                    ChannelPadOverlay(
+                        isPresented: $showChannelPad,
+                        onDigit: { digit in
+                            viewModel.channelDigit(digit)
+                        }
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
         }
@@ -156,23 +167,75 @@ struct RemoteView: View {
 
     // MARK: - System Buttons
 
-    private var systemButtons: some View {
-        HStack(spacing: 40) {
-            // Back
-            RemoteButton(icon: "arrow.uturn.backward", label: "Back") {
-                viewModel.back()
+    private func systemButtons(availableWidth: CGFloat) -> some View {
+        ViewThatFits(in: .horizontal) {
+            systemButtonRow(spacing: max(16, min(availableWidth * 0.06, 28)))
+            systemButtonGrid
+        }
+    }
+
+    private func systemButtonRow(spacing: CGFloat) -> some View {
+        HStack(spacing: spacing) {
+            systemButtonItems
+        }
+    }
+
+    private var systemButtonGrid: some View {
+        VStack(spacing: 18) {
+            HStack(spacing: 24) {
+                backButton
+                homeButton
+                menuButton
             }
 
-            // Home
-            RemoteButton(icon: "house.fill", label: "Home") {
-                viewModel.home()
+            HStack(spacing: 24) {
+                keyboardButton
+                channelPadButton
             }
+        }
+    }
 
-            // Keyboard
-            RemoteButton(icon: "keyboard", label: "Type") {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showKeyboard = true
-                }
+    @ViewBuilder
+    private var systemButtonItems: some View {
+        backButton
+        homeButton
+        menuButton
+        keyboardButton
+        channelPadButton
+    }
+
+    private var backButton: some View {
+        RemoteButton(icon: "arrow.uturn.backward", label: "Back") {
+            viewModel.back()
+        }
+    }
+
+    private var homeButton: some View {
+        RemoteButton(icon: "house.fill", label: "Home") {
+            viewModel.home()
+        }
+    }
+
+    private var menuButton: some View {
+        RemoteButton(icon: "line.3.horizontal", label: "Menu") {
+            viewModel.menu()
+        }
+    }
+
+    private var keyboardButton: some View {
+        RemoteButton(icon: "keyboard", label: "Type") {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                showChannelPad = false
+                showKeyboard = true
+            }
+        }
+    }
+
+    private var channelPadButton: some View {
+        RemoteButton(icon: "circle.grid.3x3.fill", label: "123") {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                showKeyboard = false
+                showChannelPad.toggle()
             }
         }
     }

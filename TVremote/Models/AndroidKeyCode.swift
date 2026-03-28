@@ -20,6 +20,16 @@ enum AndroidKeyCode {
     case volumeUp
     case volumeDown
     case mute
+    case digit0
+    case digit1
+    case digit2
+    case digit3
+    case digit4
+    case digit5
+    case digit6
+    case digit7
+    case digit8
+    case digit9
     case power
     case mediaPlayPause
     case mediaPlay

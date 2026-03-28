@@ -15,6 +15,7 @@ final class PersistenceService: PersistenceProtocol {
         static let savedDevices = "savedDevices"
         static let lastConnectedDeviceId = "lastConnectedDeviceId"
         static let userPreferences = "userPreferences"
+        static let recentTexts = "recentTexts"
         static let certificatePrefix = "certificate_"
     }
 
@@ -180,6 +181,35 @@ final class PersistenceService: PersistenceProtocol {
         }
     }
 
+    // MARK: - Recent Text History
+
+    func loadRecentTexts() -> [String] {
+        loadPreference(forKey: Keys.recentTexts) ?? []
+    }
+
+    @discardableResult
+    func rememberRecentText(_ text: String, limit: Int = 8) -> [String] {
+        let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedText.isEmpty else {
+            return loadRecentTexts()
+        }
+
+        var recentTexts = loadRecentTexts()
+        recentTexts.removeAll { $0 == normalizedText }
+        recentTexts.insert(normalizedText, at: 0)
+
+        if recentTexts.count > limit {
+            recentTexts = Array(recentTexts.prefix(limit))
+        }
+
+        savePreference(recentTexts, forKey: Keys.recentTexts)
+        return recentTexts
+    }
+
+    func clearRecentTexts() {
+        defaults.removeObject(forKey: Keys.recentTexts)
+    }
+
     // MARK: - Clear All Data
 
     func clearAllData() {
@@ -187,6 +217,7 @@ final class PersistenceService: PersistenceProtocol {
         defaults.removeObject(forKey: Keys.savedDevices)
         defaults.removeObject(forKey: Keys.lastConnectedDeviceId)
         defaults.removeObject(forKey: Keys.userPreferences)
+        defaults.removeObject(forKey: Keys.recentTexts)
 
         // Clear all certificates from keychain
         let query: [String: Any] = [

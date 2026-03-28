@@ -233,6 +233,17 @@ final class RemoteViewModel {
         sendAction(.mute) 
     }
 
+    // MARK: - Channel
+
+    func channelDigit(_ digit: Int) {
+        guard (0...9).contains(digit) else { return }
+
+        #if DEBUG
+        print("[RemoteViewModel] 🔢 CHANNEL DIGIT pressed: \(digit)")
+        #endif
+        sendAction(.channelDigit(digit))
+    }
+
     // MARK: - Power
 
     func power() { 

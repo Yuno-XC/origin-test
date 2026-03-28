@@ -21,6 +21,7 @@ final class RemoteActionTests: XCTestCase {
             .pause,
             .stop,
             .volumeUp,
+            .channelDigit(4),
             .power,
             .textInput("hi"),
             .deleteCharacter,
@@ -35,6 +36,8 @@ final class RemoteActionTests: XCTestCase {
     func testRemoteActionEquatable_associatedValues() {
         XCTAssertEqual(RemoteAction.textInput("a"), RemoteAction.textInput("a"))
         XCTAssertNotEqual(RemoteAction.textInput("a"), RemoteAction.textInput("b"))
+        XCTAssertEqual(RemoteAction.channelDigit(7), RemoteAction.channelDigit(7))
+        XCTAssertNotEqual(RemoteAction.channelDigit(7), RemoteAction.channelDigit(8))
         XCTAssertEqual(RemoteAction.openApp("x"), RemoteAction.openApp("x"))
         XCTAssertNotEqual(RemoteAction.openApp("x"), RemoteAction.openApp("y"))
     }
