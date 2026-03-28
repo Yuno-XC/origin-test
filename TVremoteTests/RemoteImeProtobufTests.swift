@@ -40,4 +40,15 @@ final class RemoteImeProtobufTests: XCTestCase {
         XCTAssertEqual(parsed?.imeCounter, 3)
         XCTAssertEqual(parsed?.fieldCounter, 4)
     }
+
+    /// Inner batch can include other length-delimited fields before `ime_counter` / `field_counter`.
+    func testImeCounters_skipsLengthDelimitedFieldBeforeCounters() {
+        // Field 5 (wire 2): tag 0x2A, length 2, payload; then field 1 = 3, field 2 = 4.
+        let inner: [UInt8] = [0x2A, 0x02, 0xDE, 0xAD, 0x08, 0x03, 0x10, 0x04]
+        var outer: [UInt8] = [0xAA, 0x01, UInt8(inner.count)]
+        outer.append(contentsOf: inner)
+        let parsed = RemoteImeProtobuf.imeCounters(from: Data(outer))
+        XCTAssertEqual(parsed?.imeCounter, 3)
+        XCTAssertEqual(parsed?.fieldCounter, 4)
+    }
 }

@@ -57,6 +57,7 @@ final class DiscoveryViewModel: ObservableObject {
     private func setupBindings() {
         discoveryService.discoveredDevices
             .removeDuplicates()
+            .debounce(for: .milliseconds(80), scheduler: DispatchQueue.main)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] devices in
                 self?.devices = devices

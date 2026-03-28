@@ -13,20 +13,21 @@ enum RemoteImeProtobuf {
     static func imeCounters(from data: Data) -> (imeCounter: Int, fieldCounter: Int)? {
         guard data.count >= 4 else { return nil }
 
-        let bytes = Array(data)
-        var index = 0
+        var index = data.startIndex
+        let end = data.endIndex
 
-        while index < bytes.count - 1 {
-            if bytes[index] == 0xAA && bytes[index + 1] == 0x01 {
+        while index < end - 1 {
+            if data[index] == 0xAA && data[index + 1] == 0x01 {
                 index += 2
 
-                guard let (messageLength, lengthBytes) = VarintCodec.decode(bytes, from: index) else { return nil }
+                guard let (messageLength, lengthBytes) = VarintCodec.decode(data, from: index) else { return nil }
                 index += lengthBytes
 
-                guard index + Int(messageLength) <= bytes.count else { return nil }
+                guard index + Int(messageLength) <= end else { return nil }
 
-                let messageData = Array(bytes[index..<(index + Int(messageLength))])
-                return parseImeBatchEdit(messageData)
+                let messageEnd = index + Int(messageLength)
+                let messageSlice = data.subdata(in: index..<messageEnd)
+                return parseImeBatchEdit(messageSlice)
             }
             index += 1
         }
@@ -34,12 +35,14 @@ enum RemoteImeProtobuf {
         return nil
     }
 
-    private static func parseImeBatchEdit(_ data: [UInt8]) -> (imeCounter: Int, fieldCounter: Int)? {
+    private static func parseImeBatchEdit(_ data: Data) -> (imeCounter: Int, fieldCounter: Int)? {
         var index = 0
         var newImeCounter: Int?
         var newFieldCounter: Int?
 
-        while index < data.count {
+        let byteCount = data.count
+
+        while index < byteCount {
             guard let (fieldTag, tagBytes) = VarintCodec.decode(data, from: index) else { break }
             index += tagBytes
 
@@ -63,7 +66,9 @@ enum RemoteImeProtobuf {
 
             case (_, 2):
                 guard let (length, lengthBytes) = VarintCodec.decode(data, from: index) else { break }
-                index += lengthBytes + Int(length)
+                index += lengthBytes
+                guard index + Int(length) <= byteCount else { return nil }
+                index += Int(length)
 
             default:
                 return nil

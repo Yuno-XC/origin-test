@@ -10,6 +10,10 @@ import Combine
 import AndroidTVRemoteControl
 import Security
 
+private enum PairingCodeValidation {
+    static let hexScalars = CharacterSet(charactersIn: "0123456789ABCDEFabcdef")
+}
+
 /// Adapts high-level RemoteActions to Android TV specific commands using AndroidTVRemoteControl package
 final class AndroidTVAdapter: TVRemoteAdapterProtocol {
     // MARK: - Properties
@@ -103,49 +107,37 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
         tlsManager?.secTrustClosure = { [weak self] (secTrust: SecTrust) in
             guard let self = self else { return }
             
-            #if DEBUG
-            print("[AndroidTVAdapter] TLS trust closure called - extracting server certificate")
-            #endif
-            
+            DebugLogger.log(.adapter, "TLS trust closure called - extracting server certificate")
+
             // First, evaluate the trust to get the certificate chain
             var secresult: SecTrustResultType = .invalid
             let status = SecTrustEvaluate(secTrust, &secresult)
-            
+
             guard status == errSecSuccess else {
-                #if DEBUG
-                print("[AndroidTVAdapter] SecTrustEvaluate failed with status: \(status)")
-                #endif
+                DebugLogger.logError(.adapter, "SecTrustEvaluate failed with status: \(status)")
                 return
             }
-            
+
             // Get the certificate count
             let certCount = SecTrustGetCertificateCount(secTrust)
             guard certCount > 0 else {
-                #if DEBUG
-                print("[AndroidTVAdapter] No certificates in trust chain")
-                #endif
+                DebugLogger.logWarning(.adapter, "No certificates in trust chain")
                 return
             }
-            
+
             // Get the first certificate (server's certificate)
             guard let serverCert = SecTrustGetCertificateAtIndex(secTrust, 0) else {
-                #if DEBUG
-                print("[AndroidTVAdapter] Failed to get server certificate from trust chain")
-                #endif
+                DebugLogger.logError(.adapter, "Failed to get server certificate from trust chain")
                 return
             }
-            
+
             // Extract public key from the certificate
             guard let serverKey = SecCertificateCopyKey(serverCert) else {
-                #if DEBUG
-                print("[AndroidTVAdapter] Failed to extract public key from server certificate")
-                #endif
+                DebugLogger.logError(.adapter, "Failed to extract public key from server certificate")
                 return
             }
-            
-            #if DEBUG
-            print("[AndroidTVAdapter] Successfully extracted server public key")
-            #endif
+
+            DebugLogger.logSuccess(.adapter, "Successfully extracted server public key")
             
             // Set the server public certificate in CryptoManager
             self.cryptoManager?.serverPublicCertificate = {
@@ -166,10 +158,8 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
         )
         remoteManager = RemoteManager(tlsManager!, deviceInfo, createLogger())
         
-        #if DEBUG
-        print("[AndroidTVAdapter] ✅ RemoteManager created and stored")
-        print("[AndroidTVAdapter] RemoteManager instance: \(remoteManager != nil ? "exists" : "nil")")
-        #endif
+        DebugLogger.logSuccess(.adapter, "RemoteManager created and stored")
+        DebugLogger.log(.adapter, "RemoteManager instance: \(remoteManager != nil ? "exists" : "nil")")
 
         // Setup state change handlers
         setupPairingCallbacks()
@@ -191,39 +181,31 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
             Task { @MainActor in
                 switch state {
                 case .waitingCode:
-                    #if DEBUG
-                    print("[AndroidTVAdapter] Pairing: Waiting for 6-digit code on TV")
-                    #endif
+                    DebugLogger.log(.pairing, "Waiting for 6-digit code on TV")
                     self.stateSubject.send(.pairing(.waitingForCode))
-                    
+
                 case .secretSent:
-                    #if DEBUG
-                    print("[AndroidTVAdapter] Pairing: Secret sent, validating...")
-                    #endif
+                    DebugLogger.log(.pairing, "Secret sent, validating...")
                     self.stateSubject.send(.pairing(.validatingCode))
-                    
+
                 case .successPaired:
-                    #if DEBUG
-                    print("[AndroidTVAdapter] Pairing: Successfully paired!")
-                    print("[AndroidTVAdapter] Current device after pairing: \(self.currentDevice?.name ?? "nil")")
-                    print("[AndroidTVAdapter] RemoteManager exists after pairing: \(self.remoteManager != nil)")
-                    print("[AndroidTVAdapter] CryptoManager exists: \(self.cryptoManager != nil)")
-                    print("[AndroidTVAdapter] TLSManager exists: \(self.tlsManager != nil)")
-                    #endif
+                    DebugLogger.logSuccess(.pairing, "Successfully paired!")
+                    DebugLogger.log(.pairing, "Current device: \(self.currentDevice?.name ?? "nil")")
+                    DebugLogger.log(.pairing, "RemoteManager exists: \(self.remoteManager != nil)")
+                    DebugLogger.log(.pairing, "CryptoManager exists: \(self.cryptoManager != nil)")
+                    DebugLogger.log(.pairing, "TLSManager exists: \(self.tlsManager != nil)")
                     self.isPairing = false
                     self.stateSubject.send(.pairing(.success))
                     // Remote session is started from AppViewModel.connect after submitPairingCode.
                     // Avoid a second connectToRemote here — parallel connects caused flaky handshakes.
-                    
+
                 case .error(let error):
-                    #if DEBUG
-                    print("[AndroidTVAdapter] Pairing error: \(error)")
-                    #endif
+                    DebugLogger.logError(.pairing, "Pairing error: \(error)")
                     self.isPairing = false
                     let errorMessage = self.formatError(error)
-                    
+
                     self.stateSubject.send(.pairing(.failed(errorMessage)))
-                    
+
                 default:
                     break
                 }
@@ -236,36 +218,26 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
             guard let self = self else { return }
 
             Task { @MainActor in
-                #if DEBUG
-                print("[AndroidTVAdapter] 🔄 RemoteManager state changed: \(state)")
-                #endif
+                DebugLogger.logState(.remote, "RemoteManager state changed: \(state)")
 
                 switch state {
                 case .connected:
-                    #if DEBUG
-                    print("[AndroidTVAdapter] ✅ Remote: Connected and ready")
-                    #endif
+                    DebugLogger.logSuccess(.remote, "Connected and ready")
                     self.resolveRemoteHandshakeWait(with: .success(()))
                     self.stateSubject.send(.connected)
 
                 case .paired(let runningApp):
-                    #if DEBUG
-                    print("[AndroidTVAdapter] ✅ Remote: Paired, running app: \(runningApp ?? "Unknown")")
-                    #endif
+                    DebugLogger.logSuccess(.remote, "Paired, running app: \(runningApp ?? "Unknown")")
                     self.resolveRemoteHandshakeWait(with: .success(()))
                     self.stateSubject.send(.connected)
 
                 case .error(let error):
-                    #if DEBUG
-                    print("[AndroidTVAdapter] ❌ Remote error: \(error)")
-                    #endif
+                    DebugLogger.logError(.remote, "Remote error: \(error)")
                     self.resolveRemoteHandshakeWait(with: .failure(ConnectionError.connectionLost))
                     self.stateSubject.send(.error(.connectionLost))
 
                 default:
-                    #if DEBUG
-                    print("[AndroidTVAdapter] ℹ️ Remote state: \(state)")
-                    #endif
+                    DebugLogger.log(.remote, "Remote state: \(state)")
                     break
                 }
             }
@@ -274,6 +246,7 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
         // Handle received data to track IME counters
         remoteManager?.receiveData = { [weak self] data, error in
             guard let self = self, let data = data, error == nil else { return }
+            guard data.count >= 4 else { return }
             self.parseReceivedData(data)
         }
     }
@@ -283,9 +256,7 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
         guard let (ime, field) = RemoteImeProtobuf.imeCounters(from: data) else { return }
         imeCounter = ime
         imeFieldCounter = field
-        #if DEBUG
-        print("[AndroidTVAdapter] 📥 Received IME counters - ime: \(ime), field: \(field)")
-        #endif
+        DebugLogger.logReceived(.adapter, "IME counters - ime: \(ime), field: \(field)")
     }
 
     private func formatError(_ error: AndroidTVRemoteControlError) -> String {
@@ -326,86 +297,68 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
     private func connectToRemote() async throws {
         guard let remoteManager = remoteManager,
               let device = currentDevice else {
-            #if DEBUG
-            print("[AndroidTVAdapter] ❌ connectToRemote: Missing remoteManager or currentDevice")
-            print("[AndroidTVAdapter] remoteManager: \(remoteManager != nil ? "exists" : "nil")")
-            print("[AndroidTVAdapter] currentDevice: \(currentDevice?.name ?? "nil")")
-            #endif
+            DebugLogger.logError(.adapter, "connectToRemote: Missing remoteManager or currentDevice")
+            DebugLogger.log(.adapter, "remoteManager: \(remoteManager != nil ? "exists" : "nil")")
+            DebugLogger.log(.adapter, "currentDevice: \(currentDevice?.name ?? "nil")")
             throw ConnectionError.deviceUnreachable
         }
-        
-        #if DEBUG
-        print("[AndroidTVAdapter] ✅ connectToRemote: Connecting to \(device.name) at \(device.host)")
-        #endif
-        
+
+        DebugLogger.logSuccess(.adapter, "connectToRemote: Connecting to \(device.name) at \(device.host)")
+
         await MainActor.run {
             stateSubject.send(.connecting)
         }
-        
+
         remoteManager.connect(device.host)
     }
 
     // MARK: - TVConnectionProtocol
 
     func connect(to device: TVDevice) async throws {
-        #if DEBUG
-        print("[AndroidTVAdapter] 🔌 connect() called for device: \(device.name) at \(device.host)")
-        print("[AndroidTVAdapter] Setting currentDevice to: \(device.name)")
-        #endif
-        
+        DebugLogger.logConnection(.adapter, "connect() called for device: \(device.name) at \(device.host)")
+        DebugLogger.log(.adapter, "Setting currentDevice to: \(device.name)")
+
         currentDevice = device
-        
-        #if DEBUG
-        print("[AndroidTVAdapter] currentDevice is now: \(currentDevice?.name ?? "nil")")
-        print("[AndroidTVAdapter] RemoteManager available: \(remoteManager != nil)")
-        print("[AndroidTVAdapter] Is Sony Bravia: \(isSonyBravia(device))")
-        #endif
-        
+
+        DebugLogger.log(.adapter, "currentDevice is now: \(currentDevice?.name ?? "nil")")
+        DebugLogger.log(.adapter, "RemoteManager available: \(remoteManager != nil)")
+        DebugLogger.log(.adapter, "Is Sony Bravia: \(isSonyBravia(device))")
+
         // Priority: If RemoteManager is already set up (from Android TV pairing), use it
         // This takes precedence even for Sony TVs that were paired via Android TV protocol
         if let existingRemoteManager = remoteManager {
-            #if DEBUG
-            print("[AndroidTVAdapter] ✅ RemoteManager already set up from pairing, reusing it")
-            #endif
-            
+            DebugLogger.logSuccess(.adapter, "RemoteManager already set up from pairing, reusing it")
+
             // Check if already connected
             let currentState = stateSubject.value
             if case .connected = currentState {
-                #if DEBUG
-                print("[AndroidTVAdapter] Already connected via RemoteManager")
-                #endif
+                DebugLogger.log(.adapter, "Already connected via RemoteManager")
                 return
             }
-            
+
             // Connect to remote if not already connected
             try await connectToRemote()
             return
         }
-        
+
         // If device is paired but RemoteManager doesn't exist, set it up now
         // This happens when connect() is called after app restart or if managers were cleared
         // IMPORTANT: Even for Sony TVs, if they were paired via Android TV protocol, use RemoteManager
         if device.isPaired {
-            #if DEBUG
-            print("[AndroidTVAdapter] Device is paired but RemoteManager not set up, initializing...")
-            print("[AndroidTVAdapter] This device was paired via Android TV protocol, setting up RemoteManager")
-            #endif
+            DebugLogger.log(.adapter, "Device is paired but RemoteManager not set up, initializing...")
+            DebugLogger.log(.adapter, "Device was paired via Android TV protocol, setting up RemoteManager")
             try setupManagers(for: device)
-            
-            #if DEBUG
-            print("[AndroidTVAdapter] RemoteManager after setup: \(remoteManager != nil ? "exists" : "nil")")
-            #endif
-            
+
+            DebugLogger.log(.adapter, "RemoteManager after setup: \(remoteManager != nil ? "exists" : "nil")")
+
             // Connect to remote
             try await connectToRemote()
             return
         }
-        
+
         // Fallback: For Sony Bravia without pairing, try IRCC
         if isSonyBravia(device) {
-            #if DEBUG
-            print("[AndroidTVAdapter] No pairing, falling back to IRCC protocol for Sony")
-            #endif
+            DebugLogger.log(.adapter, "No pairing, falling back to IRCC protocol for Sony")
             if sonyAdapter == nil {
                 sonyAdapter = SonyBraviaAdapter(host: device.host, port: 80, authKey: "0000")
             }
@@ -413,31 +366,26 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
             stateSubject.send(.connected)
             return
         }
-        
+
         // For Android TV without pairing, set it up now
-        #if DEBUG
-        print("[AndroidTVAdapter] Setting up RemoteManager for Android TV (not paired)")
-        #endif
+        DebugLogger.log(.adapter, "Setting up RemoteManager for Android TV (not paired)")
         try setupManagers(for: device)
-        
+
         // Only connect if not already connected
         let currentState = stateSubject.value
         if case .connected = currentState {
-            #if DEBUG
-            print("[AndroidTVAdapter] Already connected, skipping connectToRemote")
-            #endif
+            DebugLogger.log(.adapter, "Already connected, skipping connectToRemote")
             return
         }
-        
+
         try await connectToRemote()
     }
 
     func disconnect() {
-        #if DEBUG
-        print("[AndroidTVAdapter] 🔌 disconnect() called")
-        print("[AndroidTVAdapter] RemoteManager before disconnect: \(remoteManager != nil ? "exists" : "nil")")
-        print("[AndroidTVAdapter] Clearing RemoteManager and other managers")
-        #endif
+        DebugLogger.logConnection(.adapter, "disconnect() called")
+        DebugLogger.log(.adapter, "RemoteManager before disconnect: \(remoteManager != nil ? "exists" : "nil")")
+        DebugLogger.log(.adapter, "Clearing RemoteManager and other managers")
+
         pairingManager = nil
         remoteManager?.disconnect()
         remoteManager = nil
@@ -449,10 +397,8 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
         isPairing = false
         resetIMECounters()
         stateSubject.send(.disconnected)
-        
-        #if DEBUG
-        print("[AndroidTVAdapter] RemoteManager after disconnect: \(remoteManager != nil ? "exists" : "nil")")
-        #endif
+
+        DebugLogger.log(.adapter, "RemoteManager after disconnect: \(remoteManager != nil ? "exists" : "nil")")
     }
 
     func startPairing(to device: TVDevice) async throws {
@@ -546,8 +492,7 @@ final class AndroidTVAdapter: TVRemoteAdapterProtocol {
 
     func submitPairingCode(_ code: String) async throws {
         // Validate code format (6 hex characters: 0-9, A-F)
-        let validChars = CharacterSet(charactersIn: "0123456789ABCDEFabcdef")
-        guard code.count == 6, code.unicodeScalars.allSatisfy({ validChars.contains($0) }) else {
+        guard code.count == 6, code.unicodeScalars.allSatisfy({ PairingCodeValidation.hexScalars.contains($0) }) else {
             throw ConnectionError.pairingFailed("Code must be 6 hex characters (0-9, A-F)")
         }
         
