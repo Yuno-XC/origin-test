@@ -1,2 +1,11 @@
 .DS_Store
 xcuserdata/
+
+# Build
+.build/
+DerivedData/
+
+# Screenshots (generated images)
+screenshots/raw/*.png
+screenshots/framed/*.png
+screenshots/review/
