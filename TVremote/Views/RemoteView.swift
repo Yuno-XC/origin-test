@@ -10,9 +10,6 @@ import SwiftUI
 struct RemoteView: View {
     let device: TVDevice
     @State private var viewModel: RemoteViewModel
-
-    @State private var showKeyboard = false
-    @State private var showChannelPad = false
     @State private var showSettings = false
 
     init(device: TVDevice, adapter: any TVRemoteAdapterProtocol) {
@@ -22,7 +19,6 @@ struct RemoteView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let sideRailWidth = geo.size.width * 0.175
             let mainStackSpacing = geo.size.height * 0.028
 
             ZStack {
@@ -35,68 +31,21 @@ struct RemoteView: View {
                     RemoteTopBar(showSettings: $showSettings)
 
                     // Remote layout
-                    HStack(spacing: 0) {
-                        // Volume control (left side)
-                        volumeControl(leadingPadding: geo.size.width * 0.03)
-                            .frame(width: sideRailWidth)
+                    VStack(spacing: mainStackSpacing) {
+                        Spacer()
 
-                        // Main controls (center)
-                        VStack(spacing: mainStackSpacing) {
-                            Spacer()
+                        // Power button
+                        powerButton(minSide: min(geo.size.width, geo.size.height))
 
-                            // Power button
-                            powerButton(minSide: min(geo.size.width, geo.size.height))
+                        // D-Pad
+                        dPadSection
 
-                            // D-Pad
-                            dPadSection
+                        // System buttons
+                        systemButtons(availableWidth: geo.size.width * 0.92)
 
-                            // System buttons
-                            systemButtons(availableWidth: geo.size.width - (sideRailWidth * 2))
-
-                            // Media controls
-                            mediaControls
-
-                            Spacer()
-                        }
-                        .frame(maxWidth: .infinity)
-
-                        // Placeholder for symmetry
-                        Color.clear
-                            .frame(width: sideRailWidth)
+                        Spacer()
                     }
-                }
-
-                // Keyboard overlay
-                if showKeyboard {
-                    FullScreenKeyboardView(
-                        isPresented: $showKeyboard,
-                        onSendCharacter: { char in
-                            // Not used anymore - text is sent when Done is clicked
-                            viewModel.sendCharacter(char)
-                        },
-                        onDelete: {
-                            // Delete is handled locally in the text field
-                        },
-                        onEnter: {
-                            // Enter key after text is sent
-                            viewModel.sendEnter()
-                        },
-                        onSendText: { fullText in
-                            // Send the entire text when Done/Enter is clicked
-                            viewModel.sendText(fullText)
-                        }
-                    )
-                    .transition(.opacity)
-                }
-
-                if showChannelPad {
-                    ChannelPadOverlay(
-                        isPresented: $showChannelPad,
-                        onDigit: { digit in
-                            viewModel.channelDigit(digit)
-                        }
-                    )
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .frame(maxWidth: .infinity)
                 }
             }
         }
@@ -118,23 +67,6 @@ struct RemoteView: View {
             endPoint: .bottom
         )
         .ignoresSafeArea()
-    }
-
-    // MARK: - Volume Control
-
-    private func volumeControl(leadingPadding: CGFloat) -> some View {
-        VStack {
-            Spacer()
-
-            VolumeControlView(
-                onVolumeUp: { viewModel.volumeUp() },
-                onVolumeDown: { viewModel.volumeDown() },
-                onMute: { viewModel.mute() }
-            )
-
-            Spacer()
-        }
-        .padding(.leading, leadingPadding)
     }
 
     // MARK: - Power Button
@@ -168,10 +100,7 @@ struct RemoteView: View {
     // MARK: - System Buttons
 
     private func systemButtons(availableWidth: CGFloat) -> some View {
-        ViewThatFits(in: .horizontal) {
-            systemButtonRow(spacing: max(16, min(availableWidth * 0.06, 28)))
-            systemButtonGrid
-        }
+        systemButtonRow(spacing: max(16, min(availableWidth * 0.06, 28)))
     }
 
     private func systemButtonRow(spacing: CGFloat) -> some View {
@@ -180,28 +109,11 @@ struct RemoteView: View {
         }
     }
 
-    private var systemButtonGrid: some View {
-        VStack(spacing: 18) {
-            HStack(spacing: 24) {
-                backButton
-                homeButton
-                menuButton
-            }
-
-            HStack(spacing: 24) {
-                keyboardButton
-                channelPadButton
-            }
-        }
-    }
-
     @ViewBuilder
     private var systemButtonItems: some View {
         backButton
         homeButton
         menuButton
-        keyboardButton
-        channelPadButton
     }
 
     private var backButton: some View {
@@ -222,38 +134,7 @@ struct RemoteView: View {
         }
     }
 
-    private var keyboardButton: some View {
-        RemoteButton(icon: "keyboard", label: "Type") {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                showChannelPad = false
-                showKeyboard = true
-            }
-        }
-    }
-
-    private var channelPadButton: some View {
-        RemoteButton(icon: "circle.grid.3x3.fill", label: "123") {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                showKeyboard = false
-                showChannelPad.toggle()
-            }
-        }
-    }
-
-    // MARK: - Media Controls
-
-    private var mediaControls: some View {
-        MediaControlsView(
-            onPlayPause: { viewModel.playPause() },
-            onRewind: { viewModel.rewind() },
-            onFastForward: { viewModel.fastForward() },
-            onRewindRelease: { viewModel.stopRewind() },
-            onFastForwardRelease: { viewModel.stopFastForward() },
-            onPrevious: { viewModel.previous() },
-            onNext: { viewModel.next() }
-        )
-        .padding(.horizontal, 20)
-    }
+    // Removed extra overlays and media/volume controls to reduce feature surface.
 }
 
 private struct RemoteTopBar: View {
