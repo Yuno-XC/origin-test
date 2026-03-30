@@ -19,17 +19,12 @@ final class SonyBraviaAdapter: TVRemoteAdapterProtocol {
     
     private(set) var currentDevice: TVDevice?
     private var authToken: String?
-    private var pairingCode: String?
     
     var connectionState: AnyPublisher<ConnectionState, Never> {
         stateSubject.eraseToAnyPublisher()
     }
     
-    var currentState: ConnectionState {
-        get {
-            return stateSubject.value
-        }
-    }
+    var currentState: ConnectionState { stateSubject.value }
     
     // MARK: - Initialization
     
@@ -89,7 +84,7 @@ final class SonyBraviaAdapter: TVRemoteAdapterProtocol {
             #endif
             
             // Re-throw with user-friendly message
-            if case .restAPIError(let code, let message) = error {
+            if case .restAPIError(_, let message) = error {
                 throw ConnectionError.pairingFailed(message)
             } else {
                 throw ConnectionError.pairingFailed(error.localizedDescription)
@@ -126,8 +121,6 @@ final class SonyBraviaAdapter: TVRemoteAdapterProtocol {
                 #if DEBUG
                 print("[SonyBraviaAdapter] PIN submission successful - pairing complete")
                 #endif
-                
-                self.pairingCode = code
                 
                 // Get and share the authentication cookie with IRCC
                 if let cookie = restAPI.getAuthCookie() {
@@ -169,6 +162,11 @@ final class SonyBraviaAdapter: TVRemoteAdapterProtocol {
     }
     
     // MARK: - Private
+
+    private static let channelDigitKeyCodes: [AndroidKeyCode] = [
+        .digit0, .digit1, .digit2, .digit3, .digit4,
+        .digit5, .digit6, .digit7, .digit8, .digit9
+    ]
     
     private func mapActionToKeyCode(_ action: RemoteAction) -> AndroidKeyCode? {
         switch action {
@@ -192,19 +190,8 @@ final class SonyBraviaAdapter: TVRemoteAdapterProtocol {
         case .volumeDown: return .volumeDown
         case .mute: return .mute
         case .channelDigit(let digit):
-            switch digit {
-            case 0: return .digit0
-            case 1: return .digit1
-            case 2: return .digit2
-            case 3: return .digit3
-            case 4: return .digit4
-            case 5: return .digit5
-            case 6: return .digit6
-            case 7: return .digit7
-            case 8: return .digit8
-            case 9: return .digit9
-            default: return nil
-            }
+            guard (0...9).contains(digit) else { return nil }
+            return Self.channelDigitKeyCodes[digit]
         case .power: return .power
         case .textInput, .deleteCharacter, .enter, .openApp:
             // IRCC doesn't support text input directly
