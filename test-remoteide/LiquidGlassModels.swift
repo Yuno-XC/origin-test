@@ -87,18 +87,54 @@ enum AppearanceChoice: String, CaseIterable, Identifiable {
     }
 }
 
-enum LabBackgroundKind: String, CaseIterable, Identifiable {
-    case aurora
-    case mesh
-    case stripes
+enum PreviewLayoutChoice: String, CaseIterable, Identifiable {
+    case adaptive
+    case horizontal
+    case vertical
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .aurora: "Aurora gradient"
+        case .adaptive: "Adaptive"
+        case .horizontal: "Horizontal"
+        case .vertical: "Vertical"
+        }
+    }
+}
+
+enum LabBackgroundKind: String, CaseIterable, Identifiable {
+    case aurora
+    case mesh
+    case stripes
+    case nebula
+    case polarGrid
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .aurora: "Aurora glow"
         case .mesh: "Mesh colors"
         case .stripes: "Stripes"
+        case .nebula: "Nebula pulse"
+        case .polarGrid: "Polar grid"
+        }
+    }
+}
+
+enum LabPreset: String, CaseIterable, Identifiable {
+    case frosted
+    case neon
+    case minimal
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .frosted: "Frosted"
+        case .neon: "Neon"
+        case .minimal: "Minimal"
         }
     }
 }
