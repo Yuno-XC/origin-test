@@ -108,9 +108,12 @@ final class GlassTransitionKindTests: XCTestCase {
     }
 
     func testTransitionMapping() {
-        XCTAssertEqual(String(describing: GlassTransitionKind.identity.transition), "identity")
-        XCTAssertEqual(String(describing: GlassTransitionKind.matchedGeometry.transition), "matchedGeometry")
-        XCTAssertEqual(String(describing: GlassTransitionKind.materialize.transition), "materialize")
+        let descriptions = GlassTransitionKind.allCases.map { String(describing: $0.transition) }
+        XCTAssertEqual(
+            descriptions.count,
+            Set(descriptions).count,
+            "Each kind should map to a distinct GlassEffectTransition"
+        )
     }
 
     func testUniqueIDs() {

@@ -55,11 +55,11 @@ struct LiquidGlassPlaygroundView: View {
                 let glass = state.resolvedGlass()
                 let spacing = state.containerSpacing(forMinSide: m)
                 let previewItems = sampleItems.prefix(max(state.sampleCount, 2))
-                let shouldUseVerticalLayout: Bool = switch state.previewLayoutChoice {
-                case .adaptive: w < h * 0.92
-                case .horizontal: false
-                case .vertical: true
-                }
+                let shouldUseVerticalLayout = PreviewLayoutResolver.shouldUseVerticalLayout(
+                    state.previewLayoutChoice,
+                    width: w,
+                    height: h
+                )
 
                 ZStack(alignment: .topLeading) {
                     GlassEffectContainer(spacing: spacing) {
@@ -295,7 +295,9 @@ struct LiquidGlassPlaygroundView: View {
 
                 Button("Save snapshot") {
                     let trimmed = snapshotName.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let name = trimmed.isEmpty ? "Snapshot \(state.customSnapshots.count + 1)" : trimmed
+                    let name = trimmed.isEmpty
+                        ? LabSnapshotNaming.defaultUntitledName(savedSnapshotCount: state.customSnapshots.count)
+                        : trimmed
                     withAnimation(.easeInOut(duration: 0.25)) {
                         let snap = state.makeSnapshot()
                         let named = NamedLabSnapshot(name: name, snapshot: snap)
@@ -334,15 +336,11 @@ struct LiquidGlassPlaygroundView: View {
                                   let preset = state.customSnapshots.first(where: { $0.id == id }) else { return }
 
                             withAnimation(.easeInOut(duration: 0.25)) {
-                                // Ensure the duplicated snapshot name stays unique.
                                 let existingNames = Set(state.customSnapshots.map(\.name))
-                                let baseName = preset.name
-                                var candidate = "\(baseName) Copy"
-                                var suffix = 2
-                                while existingNames.contains(candidate) {
-                                    candidate = "\(baseName) Copy \(suffix)"
-                                    suffix += 1
-                                }
+                                let candidate = LabSnapshotNaming.nextDuplicateName(
+                                    baseName: preset.name,
+                                    existingNames: existingNames
+                                )
 
                                 let named = NamedLabSnapshot(name: candidate, snapshot: preset.snapshot)
                                 state.customSnapshots.append(named)
